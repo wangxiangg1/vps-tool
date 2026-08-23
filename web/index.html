@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0d1112">
+    <meta name="description" content="vps-tool 节点集中管理工作台">
+    <title>vps-tool · 节点工作台</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div id="app" class="app-shell">
+      <section id="loginView" class="login-view" aria-labelledby="loginTitle">
+        <div class="login-frame">
+          <div class="login-masthead">
+            <div class="brand-lockup">
+              <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span class="brand-name">VPS TOOL</span>
+            </div>
+            <span class="masthead-code">CONTROL / 01</span>
+          </div>
+          <div class="login-rule" aria-hidden="true"><span></span></div>
+          <div class="login-content">
+            <div class="login-intro">
+              <p class="eyebrow">NIGHT FLIGHT CONTROL ROOM</p>
+              <h1 id="loginTitle">管理员登录</h1>
+              <p class="login-copy">连接主控后查看节点状态与固定操作。</p>
+            </div>
+            <form id="loginForm" class="login-form" novalidate>
+              <div class="form-field">
+                <label for="username">管理员账号</label>
+                <input id="username" name="username" type="text" autocomplete="username" required autofocus>
+              </div>
+              <div class="form-field">
+                <label for="password">密码</label>
+                <input id="password" name="password" type="password" autocomplete="current-password" required>
+              </div>
+              <button id="loginButton" class="button button-primary button-wide" type="submit">
+                <span class="button-icon" aria-hidden="true">↗</span>
+                登录主控
+              </button>
+              <p id="loginMessage" class="form-message" role="alert" aria-live="polite"></p>
+            </form>
+          </div>
+          <div class="login-footer">
+            <span>SESSION / COOKIE</span>
+            <span id="loginHealthText">正在检查主控</span>
+          </div>
+        </div>
+      </section>
+
+      <section id="dashboardView" class="dashboard-view" hidden aria-label="节点管理工作台">
+        <header class="topbar">
+          <div class="topbar-brand">
+            <div class="brand-lockup">
+              <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span class="brand-name">VPS TOOL</span>
+            </div>
+            <span class="topbar-divider" aria-hidden="true"></span>
+            <span class="topbar-context">主控节点 / 单实例</span>
+          </div>
+          <div class="topbar-status" aria-live="polite">
+            <span id="healthDot" class="status-dot status-dot-unknown" aria-hidden="true"></span>
+            <span id="healthLabel">主控状态未知</span>
+            <span id="healthDetail" class="topbar-detail">等待检测</span>
+          </div>
+          <div class="topbar-actions">
+            <span id="lastUpdated" class="last-updated">数据更新时间：—</span>
+            <button id="refreshButton" class="icon-button" type="button" title="刷新节点和操作记录" aria-label="刷新节点和操作记录">
+              <span aria-hidden="true">↻</span>
+            </button>
+            <button id="logoutButton" class="text-button" type="button">退出登录</button>
+          </div>
+          <div class="signal-track" aria-hidden="true"><span></span></div>
+        </header>
+
+        <div class="workspace">
+          <aside class="side-rail" aria-label="工作台导航">
+            <div class="rail-readout">
+              <span class="rail-label">WATCH / LIVE</span>
+              <strong id="railOnlineCount">—</strong>
+              <span>在线节点</span>
+            </div>
+            <nav class="side-nav">
+              <button class="nav-button is-active" type="button" data-scroll-target="nodesSection" aria-current="page">
+                <span class="nav-icon" aria-hidden="true">◈</span>
+                <span>节点</span>
+                <span id="navNodeCount" class="nav-count">—</span>
+              </button>
+              <button class="nav-button" type="button" data-scroll-target="activitySection">
+                <span class="nav-icon" aria-hidden="true">≋</span>
+                <span>任务与记录</span>
+                <span id="navActivityCount" class="nav-count">—</span>
+              </button>
+            </nav>
+            <div class="rail-footer">
+              <span class="rail-label">OPERATOR</span>
+              <strong id="operatorName">管理员</strong>
+              <span>会话已建立</span>
+            </div>
+          </aside>
+
+          <main class="main-content">
+            <section class="page-heading" aria-labelledby="pageTitle">
+              <div>
+                <p class="eyebrow">FLEET / STATUS BOARD</p>
+                <h1 id="pageTitle">节点工作台</h1>
+                <p id="viewStatusLine" class="page-subtitle">正在读取节点数据……</p>
+              </div>
+              <div class="heading-actions">
+                <button id="activityToggle" class="button button-quiet" type="button" aria-controls="activitySection" aria-expanded="true">
+                  <span class="button-icon" aria-hidden="true">≋</span>
+                  任务与记录
+                </button>
+              </div>
+            </section>
+
+            <section class="signal-strip" aria-label="节点摘要">
+              <div class="signal-cell signal-cell-main">
+                <span class="signal-label">在线节点</span>
+                <strong id="onlineCount" class="signal-value">—</strong>
+                <span id="onlineSummary" class="signal-note">等待数据</span>
+              </div>
+              <div class="signal-cell">
+                <span class="signal-label">WARP 开启</span>
+                <strong id="warpOnCount" class="signal-value">—</strong>
+                <span class="signal-note">节点状态</span>
+              </div>
+              <div class="signal-cell">
+                <span class="signal-label">3x-ui 运行</span>
+                <strong id="xuiRunningCount" class="signal-value">—</strong>
+                <span class="signal-note">服务状态</span>
+              </div>
+              <div class="signal-cell">
+                <span class="signal-label">状态未知</span>
+                <strong id="unknownCount" class="signal-value">—</strong>
+                <span class="signal-note">需要检查</span>
+              </div>
+            </section>
+
+            <section id="nodesSection" class="nodes-section" aria-labelledby="nodesTitle">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">INVENTORY</p>
+                  <h2 id="nodesTitle">节点清单</h2>
+                </div>
+                <span id="resultCount" class="result-count">—</span>
+              </div>
+
+              <div class="toolbar" role="search" aria-label="节点筛选">
+                <label class="search-control" for="nodeSearch">
+                  <span class="control-symbol" aria-hidden="true">⌕</span>
+                  <span class="sr-only">搜索节点</span>
+                  <input id="nodeSearch" type="search" placeholder="搜索名称或 Node ID" autocomplete="off">
+                </label>
+                <label class="select-control" for="statusFilter">
+                  <span>状态</span>
+                  <select id="statusFilter">
+                    <option value="all">全部</option>
+                    <option value="online">在线</option>
+                    <option value="offline">离线</option>
+                    <option value="unknown">未知</option>
+                  </select>
+                </label>
+                <label class="select-control" for="warpFilter">
+                  <span>WARP</span>
+                  <select id="warpFilter">
+                    <option value="all">全部</option>
+                    <option value="on">开启</option>
+                    <option value="off">关闭</option>
+                    <option value="degraded">降级</option>
+                    <option value="unknown">未知</option>
+                  </select>
+                </label>
+                <label class="select-control" for="xuiFilter">
+                  <span>3x-ui</span>
+                  <select id="xuiFilter">
+                    <option value="all">全部</option>
+                    <option value="running">运行中</option>
+                    <option value="stopped">已停止</option>
+                    <option value="failed">失败</option>
+                    <option value="not_found">未找到</option>
+                    <option value="unknown">未知</option>
+                  </select>
+                </label>
+                <div id="selectionTools" class="selection-tools" hidden>
+                  <span id="selectionCount" class="selection-count">已选 0 个</span>
+                  <button id="batchButton" class="button button-danger button-small" type="button" disabled>
+                    <span class="button-icon" aria-hidden="true">⇄</span>
+                    批量操作
+                  </button>
+                </div>
+              </div>
+
+              <div id="nodeState" class="state-message" role="status" aria-live="polite">
+                <span class="state-spinner" aria-hidden="true"></span>
+                正在读取节点数据……
+              </div>
+              <div id="nodeTableWrap" class="table-wrap" hidden>
+                <table class="node-table">
+                  <caption class="sr-only">节点状态列表</caption>
+                  <thead>
+                    <tr>
+                      <th class="select-column">
+                        <label class="checkbox-label" title="选择全部在线节点">
+                          <input id="selectAllNodes" type="checkbox" aria-label="选择全部在线节点">
+                          <span class="custom-checkbox" aria-hidden="true"></span>
+                        </label>
+                      </th>
+                      <th>节点</th>
+                      <th>当前出口 IP</th>
+                      <th>WARP</th>
+                      <th>3x-ui</th>
+                      <th>资源</th>
+                      <th>Uptime</th>
+                      <th>最后在线</th>
+                      <th class="action-column"><span class="sr-only">操作</span></th>
+                    </tr>
+                  </thead>
+                  <tbody id="nodesBody"></tbody>
+                </table>
+              </div>
+            </section>
+
+            <section id="activitySection" class="activity-section" aria-labelledby="activityTitle">
+              <div class="section-heading activity-heading">
+                <div>
+                  <p class="eyebrow">TRACE / AUDIT</p>
+                  <h2 id="activityTitle">任务与操作记录</h2>
+                </div>
+                <button id="activityCollapse" class="icon-button" type="button" title="收起任务与记录" aria-label="收起任务与记录" aria-expanded="true">
+                  <span aria-hidden="true">⌃</span>
+                </button>
+              </div>
+              <div id="activityBody" class="activity-body">
+                <div class="activity-tabs" role="tablist" aria-label="任务与操作记录">
+                  <button class="tab-button is-active" type="button" role="tab" aria-selected="true" data-activity-tab="actions">操作记录 <span id="actionCount" class="tab-count">—</span></button>
+                  <button class="tab-button" type="button" role="tab" aria-selected="false" data-activity-tab="tasks">定时任务 <span id="taskCount" class="tab-count">—</span></button>
+                </div>
+                <div id="activityContent" class="activity-content" role="tabpanel"></div>
+              </div>
+            </section>
+          </main>
+        </div>
+      </section>
+
+      <div id="drawerScrim" class="drawer-scrim" hidden></div>
+      <aside id="detailDrawer" class="detail-drawer" hidden aria-labelledby="detailTitle" aria-modal="true" role="dialog">
+        <div class="drawer-header">
+          <div>
+            <p class="eyebrow">NODE DETAIL</p>
+            <h2 id="detailTitle">节点详情</h2>
+          </div>
+          <button id="closeDrawerButton" class="icon-button" type="button" title="关闭节点详情" aria-label="关闭节点详情">
+            <span aria-hidden="true">×</span>
+          </button>
+        </div>
+        <div id="detailContent" class="drawer-content"></div>
+      </aside>
+
+      <dialog id="confirmDialog" class="confirm-dialog" aria-labelledby="confirmTitle">
+        <form id="confirmForm" method="dialog">
+          <div class="dialog-mark" aria-hidden="true">!</div>
+          <p class="eyebrow">CONFIRM ACTION</p>
+          <h2 id="confirmTitle">确认操作</h2>
+          <p id="confirmMessage" class="dialog-message"></p>
+          <div id="confirmDetails" class="dialog-details"></div>
+          <div class="dialog-actions">
+            <button class="button button-quiet" type="submit" value="cancel">取消</button>
+            <button id="confirmProceed" class="button button-danger" type="submit" value="confirm">确认执行</button>
+          </div>
+        </form>
+      </dialog>
+
+      <section id="toastRegion" class="toast-region" aria-live="polite" aria-atomic="true"></section>
+    </div>
+    <script>
+      window.VPS_TOOL_CONFIG = window.VPS_TOOL_CONFIG || {};
+    </script>
+    <script src="app.js" defer></script>
+  </body>
+</html>

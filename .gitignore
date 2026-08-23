@@ -1,0 +1,31 @@
+# Local runtime data
+server/data/*
+!server/data/.gitkeep
+*.sqlite3
+*.sqlite3-*
+*.db
+*.db-*
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Go and local smoke output
+agent/.gocache/
+agent/smoke-journal.json
+dist/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Editors and OS files
+.DS_Store
+.vscode/
+.idea/
