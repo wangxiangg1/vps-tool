@@ -41,6 +41,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: agent/go.mod
+          cache: false
 
       - name: Verify Go Agent
         working-directory: agent
