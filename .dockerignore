@@ -1,0 +1,29 @@
+.git/
+.github/
+.vscode/
+.idea/
+
+# Local-only product and development documents
+doc/
+进度.md
+
+# Components not needed by the control-plane image
+agent/
+dist/
+
+# Runtime data and local secrets
+server/data/*
+*.sqlite3
+*.sqlite3-*
+*.db
+*.db-*
+.env
+.env.*
+!.env.example
+
+# Local build and editor output
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/

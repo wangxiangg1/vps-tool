@@ -1,0 +1,28 @@
+services:
+  control-plane:
+    image: ${VPS_TOOL_IMAGE:-ghcr.io/wangxiangg1/vps-tool:latest}
+    restart: unless-stopped
+    init: true
+    environment:
+      VPS_TOOL_ADMIN_USER: ${VPS_TOOL_ADMIN_USER:?VPS_TOOL_ADMIN_USER is required}
+      VPS_TOOL_ADMIN_PASSWORD: ${VPS_TOOL_ADMIN_PASSWORD:?VPS_TOOL_ADMIN_PASSWORD is required}
+      VPS_TOOL_COOKIE_SECURE: ${VPS_TOOL_COOKIE_SECURE:-true}
+      VPS_TOOL_DB_PATH: /data/vps-tool.sqlite3
+    ports:
+      - "${VPS_TOOL_BIND_ADDRESS:-127.0.0.1}:${VPS_TOOL_PORT:-8000}:8000"
+    volumes:
+      - vps-tool-data:/data
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test:
+        ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+volumes:
+  vps-tool-data:
