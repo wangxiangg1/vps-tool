@@ -18,11 +18,12 @@ import (
 
 const (
 	DefaultStatePath = "/var/lib/vps-agent/requests.json"
-	DefaultVersion   = "0.1.0"
+	DefaultVersion   = "0.2.0"
 	maxConfigBytes   = 64 * 1024
 )
 
 var supportedAdapters = map[string]struct{}{
+	"generic":      {},
 	"fixed-helper": {},
 	"wgcf":         {},
 	"warp-cli":     {},

@@ -14,7 +14,7 @@ __pycache__/
 venv/
 
 # Go and local smoke output
-agent/.gocache/
+agent/.gocache*/
 agent/smoke-journal.json
 dist/
 

@@ -1,0 +1,24 @@
+[Unit]
+Description=vps-tool low-resource agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=vps-agent
+Group=vps-agent
+ExecStart=/usr/local/bin/vps-agent -config /etc/vps-agent/agent.json
+Restart=always
+RestartSec=5
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/etc/vps-agent /var/lib/vps-agent
+NoNewPrivileges=false
+PrivateDevices=false
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+
+[Install]
+WantedBy=multi-user.target

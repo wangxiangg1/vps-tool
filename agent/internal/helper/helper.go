@@ -27,6 +27,7 @@ const (
 )
 
 var supportedAdapters = map[string]struct{}{
+	"generic":      {},
 	"fixed-helper": {},
 	"wgcf":         {},
 	"warp-cli":     {},
@@ -57,6 +58,7 @@ type Runner struct {
 	Unit    string
 	Timeout time.Duration
 	DryRun  bool
+	UseSudo bool
 	dry     *DryRun
 	dryMu   sync.Mutex
 }
@@ -89,6 +91,7 @@ func NewRunner(path, adapter, unit string, dryRun bool) (*Runner, error) {
 		Unit:    unit,
 		Timeout: defaultHelperTimeout,
 		DryRun:  dryRun,
+		UseSudo: !dryRun,
 	}
 	if dryRun {
 		runner.dry = &DryRun{
@@ -265,7 +268,17 @@ func (r *Runner) callOutput(ctx context.Context, args []string) ([]byte, error) 
 	}
 	callCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	command := exec.CommandContext(callCtx, r.Path, args...)
+	commandPath := r.Path
+	commandArgs := args
+	if r.UseSudo {
+		sudoPath, err := findSudo()
+		if err != nil {
+			return nil, err
+		}
+		commandPath = sudoPath
+		commandArgs = append([]string{"-n", "--", r.Path}, args...)
+	}
+	command := exec.CommandContext(callCtx, commandPath, commandArgs...)
 	command.Stdin = nil
 	var stdout, stderr limitedBuffer
 	command.Stdout = &stdout
@@ -295,6 +308,18 @@ func (r *Runner) callOutput(ctx context.Context, args []string) ([]byte, error) 
 		return nil, &Error{Code: "helper_failed", Message: "helper output exceeded the limit"}
 	}
 	return stdout.Bytes(), nil
+}
+
+func findSudo() (string, error) {
+	for _, candidate := range []string{"/usr/bin/sudo", "/bin/sudo"} {
+		if _, err := os.Stat(candidate); err != nil {
+			continue
+		}
+		if err := validateExecutable(candidate); err == nil {
+			return candidate, nil
+		}
+	}
+	return "", &Error{Code: "helper_not_found", Message: "sudo was not found or is not safely installed"}
 }
 
 func validateExecutable(path string) error {

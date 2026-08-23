@@ -64,5 +64,6 @@ Release through `.github/workflows/release-agent.yml`. Pushes to `main` and
 version tags also build and publish the multi-architecture control-plane image
 through `.github/workflows/publish-control-plane.yml`.
 
-The control plane requires HTTPS/WSS in production. The public one-line Agent
-installer and production WARP/x-ui Helper remain separate deployment work.
+The control plane requires HTTPS/WSS in production. The public Agent installer,
+fixed production Helper, and Agent Release assets are published together by
+`.github/workflows/release-agent.yml`.

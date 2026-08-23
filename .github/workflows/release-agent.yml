@@ -1,4 +1,4 @@
-name: Release Agent
+name: Release Agent and Installer
 
 on:
   push:
@@ -21,18 +21,24 @@ jobs:
           go-version-file: agent/go.mod
           cache: false
 
-      - name: Build Linux Agent binaries
+      - name: Build Linux Agent and Helper binaries
         working-directory: agent
         env:
           CGO_ENABLED: "0"
         run: |
           mkdir -p ../dist
-          GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o ../dist/vps-agent-linux-amd64 ./cmd/vps-agent
-          GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o ../dist/vps-agent-linux-arm64 ./cmd/vps-agent
+          GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.version=${GITHUB_REF_NAME#v}" -o ../dist/vps-agent-linux-amd64 ./cmd/vps-agent
+          GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w -X main.version=${GITHUB_REF_NAME#v}" -o ../dist/vps-agent-linux-arm64 ./cmd/vps-agent
+          GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o ../dist/vps-agent-helper-linux-amd64 ./cmd/vps-agent-helper
+          GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o ../dist/vps-agent-helper-linux-arm64 ./cmd/vps-agent-helper
+
+      - name: Add public installer
+        run: |
+          install -m 0755 install-agent.sh dist/install-agent.sh
 
       - name: Generate checksums
         working-directory: dist
-        run: sha256sum vps-agent-* > SHA256SUMS
+        run: sha256sum vps-agent-* install-agent.sh > SHA256SUMS
 
       - name: Create GitHub Release
         env:

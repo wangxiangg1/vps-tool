@@ -45,6 +45,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("load agent config: %v", err)
 	}
+	cfg.AgentVersion = version
 	if cfg.RegistrationToken != "" && *configPath == "" {
 		log.Fatalf("registration_token requires -config so the issued credential can be persisted")
 	}

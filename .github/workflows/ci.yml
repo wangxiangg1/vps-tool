@@ -15,6 +15,9 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Validate Agent installer shell syntax
+        run: bash -n install-agent.sh
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -50,6 +53,7 @@ jobs:
           go test ./...
           go vet ./...
           CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /tmp/vps-agent ./cmd/vps-agent
+          CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /tmp/vps-agent-helper ./cmd/vps-agent-helper
 
   container:
     runs-on: ubuntu-latest

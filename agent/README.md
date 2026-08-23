@@ -1,6 +1,6 @@
 # vps-agent
 
-This directory contains the low-resource Go Agent MVP for vps-tool. It uses the
+This directory contains the low-resource Go Agent for vps-tool. It uses the
 standard library only. The agent actively connects to the configured `wss://`
 endpoint, sends a protocol envelope for every message, reports an initial full
 status and then heartbeats every 30 seconds, and reconnects with bounded
@@ -34,7 +34,7 @@ variables with the `VPS_AGENT_` prefix can override individual fields:
   "node_id": "node-01",
   "credential": "replace-with-a-long-random-secret",
   "wss_url": "wss://panel.example.com/agent",
-  "warp_adapter": "fixed-helper",
+  "warp_adapter": "generic",
   "xui_unit": "x-ui.service",
   "helper_path": "/usr/local/libexec/vps-agent-helper",
   "state_path": "/var/lib/vps-agent/requests.json",
@@ -52,6 +52,41 @@ appended to the URL, query string, or command arguments.
 
 For local tests, use `dry_run: true` with the `dry-run` adapter. The fake
 backend starts with WARP ON and cycles through two documentation IPs.
+
+## One-line installation
+
+The public release includes `vps-agent`, the fixed root Helper, an installer,
+and `SHA256SUMS` for both Linux architectures. Create a node in the control
+plane first, then export the one-time registration values and run the installer
+as root:
+
+```bash
+export VPS_AGENT_NODE_ID="node-id-from-the-control-plane"
+export VPS_AGENT_REGISTRATION_TOKEN="one-time-registration-token"
+export VPS_AGENT_WSS_URL="wss://panel.example.com/agent"
+export VPS_AGENT_XUI_UNIT="x-ui"
+export VPS_AGENT_WARP_ADAPTER="generic"
+curl --fail --silent --show-error --location \
+  https://github.com/wangxiangg1/vps-tool/releases/latest/download/install-agent.sh \
+  -o /tmp/vps-tool-install.sh
+chmod 0755 /tmp/vps-tool-install.sh
+sudo --preserve-env=VPS_AGENT_NODE_ID,VPS_AGENT_REGISTRATION_TOKEN,VPS_AGENT_WSS_URL,VPS_AGENT_XUI_UNIT,VPS_AGENT_WARP_ADAPTER \
+  /bin/bash /tmp/vps-tool-install.sh
+rm -f /tmp/vps-tool-install.sh
+```
+
+The installer detects `linux/amd64` or `linux/arm64`, downloads the matching
+Agent and Helper, verifies both against the release checksum list, creates the
+dedicated `vps-agent` user, installs a fixed `sudoers` rule, and enables
+`vps-agent.service`. It keeps an existing `/etc/vps-agent/agent.json` during
+upgrades, so a long-term credential is not replaced. The first successful
+registration atomically replaces the one-time token in that file.
+
+The service user can invoke only `/usr/local/libexec/vps-agent-helper`; the
+Helper accepts only the documented fixed argument forms. The Helper itself is
+root-owned and validates every external executable path, systemd unit, adapter,
+watchdog token, deadline, and output. It supports `warp-cli`, `wgcf` via
+`wg-quick`, `warp-go` via its fixed systemd unit, and `generic` auto-detection.
 
 ## Fixed Helper Contract
 
@@ -79,11 +114,11 @@ with `state` (`running`, `stopped`, `failed`, `not_found`, or `unknown`). Any
 missing helper is reported as `helper_not_found`; a non-zero exit or malformed
 output is `helper_failed`.
 
-If the helper needs root privileges, install it as a small reviewed privileged
-broker with a fixed interface and root ownership. The Agent user must not be
-able to modify the helper or its parent directories. A sudoers deployment may
-allow only this exact helper, but must not allow `systemctl`, a shell, an
-interpreter, or arbitrary arguments.
+The release installer places the Helper as a root-owned executable and grants
+the Agent user a single `sudo -n` rule for that path. The Agent never invokes
+`systemctl`, a shell, an interpreter, or arbitrary arguments itself. A finite
+systemd transient unit runs the watchdog independently of the WSS process and
+attempts to restore WARP if the Agent disappears during `change_ip`.
 
 ## systemd installation
 
@@ -106,8 +141,9 @@ RestartSec=5
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/lib/vps-agent
-NoNewPrivileges=true
+ReadWritePaths=/etc/vps-agent /var/lib/vps-agent
+NoNewPrivileges=false
+PrivateDevices=false
 
 [Install]
 WantedBy=multi-user.target
@@ -115,8 +151,9 @@ WantedBy=multi-user.target
 
 Install and enable with `systemctl daemon-reload`, `systemctl enable --now
 vps-agent.service`, then verify `systemctl is-active vps-agent.service`.
-If a privileged broker is launched through sudo, adjust the service's
-privilege policy deliberately; `NoNewPrivileges` prevents setuid elevation.
+`NoNewPrivileges=false` is deliberate: the service uses a `sudo -n` rule that
+allows only the installed fixed Helper. Do not broaden that rule to
+`systemctl`, a shell, an interpreter, or arbitrary command arguments.
 
 ## Actions and state
 
