@@ -51,10 +51,9 @@ placed in front of it. Keep `VPS_TOOL_COOKIE_SECURE=true` when serving through
 HTTPS; only set it to `false` for local plain-HTTP testing. Set
 `VPS_TOOL_IMAGE` to a version tag or digest when pinning deployments.
 
-The repository is public, but a newly published GHCR package may initially be
-private. To allow an unauthenticated VPS pull, set the package visibility to
-Public once in the package settings; GitHub documents this separately from
-repository visibility.
+The `vps-tool` GHCR package is currently Public, so a public VPS deployment can
+pull it without `docker login ghcr.io`. If package visibility is changed later,
+set it back to Public in the package settings before using anonymous pulls.
 
 ## GitHub automation
 
