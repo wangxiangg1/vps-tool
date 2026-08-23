@@ -10,7 +10,6 @@ Agent, and a static operations console.
 - `agent/`: Go Agent for Linux VPS nodes. It reports status and executes only
   the fixed Action allowlist; it never accepts remote shell text.
 - `web/`: no-build browser console served by the control plane.
-- `RPD.md`: product and security requirements.
 
 ## Local verification
 
