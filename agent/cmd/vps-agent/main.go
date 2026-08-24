@@ -33,6 +33,7 @@ const (
 	statusInterval    = 60 * time.Second
 	journalMaxEntries = 256
 	journalMaxBytes   = 512 * 1024
+	resultQueueSize   = 128
 )
 
 func main() {
@@ -84,8 +85,9 @@ func main() {
 	}
 
 	policy := backoff.New(time.Now().UnixNano())
+	resultCh := make(chan action.Result, resultQueueSize)
 	for ctx.Err() == nil {
-		err := runConnectionWithBackoff(ctx, &cfg, *configPath, executor, collector, policy)
+		err := runConnectionWithResultQueue(ctx, &cfg, *configPath, executor, collector, policy, resultCh)
 		if ctx.Err() != nil {
 			break
 		}
@@ -105,6 +107,10 @@ func runConnection(ctx context.Context, cfg config.Config, executor *action.Exec
 }
 
 func runConnectionWithBackoff(ctx context.Context, cfg *config.Config, configPath string, executor *action.Executor, collector *status.FullCollector, policy *backoff.Policy) error {
+	return runConnectionWithResultQueue(ctx, cfg, configPath, executor, collector, policy, make(chan action.Result, resultQueueSize))
+}
+
+func runConnectionWithResultQueue(ctx context.Context, cfg *config.Config, configPath string, executor *action.Executor, collector *status.FullCollector, policy *backoff.Policy, resultCh chan action.Result) error {
 	dialCtx, cancelDial := context.WithTimeout(ctx, 20*time.Second)
 	defer cancelDial()
 	headers := make(http.Header)
@@ -163,12 +169,12 @@ func runConnectionWithBackoff(ctx context.Context, cfg *config.Config, configPat
 
 	connectionCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	errorsCh := make(chan error, 3)
+	errorsCh := make(chan error, 4)
 	var group sync.WaitGroup
-	group.Add(3)
+	group.Add(4)
 	go func() {
 		defer group.Done()
-		errorsCh <- readLoop(connectionCtx, conn, *cfg, executor)
+		errorsCh <- readLoop(connectionCtx, conn, *cfg, executor, resultCh)
 	}()
 	go func() {
 		defer group.Done()
@@ -177,6 +183,10 @@ func runConnectionWithBackoff(ctx context.Context, cfg *config.Config, configPat
 	go func() {
 		defer group.Done()
 		errorsCh <- statusLoop(connectionCtx, conn, cfg.NodeID, collector)
+	}()
+	go func() {
+		defer group.Done()
+		errorsCh <- resultLoop(connectionCtx, conn, resultCh)
 	}()
 
 	err = <-errorsCh
@@ -215,7 +225,7 @@ func waitForAuthentication(ctx context.Context, conn wsclient.Conn) (string, err
 	return issuedCredential, nil
 }
 
-func readLoop(ctx context.Context, conn wsclient.Conn, cfg config.Config, executor *action.Executor) error {
+func readLoop(ctx context.Context, conn wsclient.Conn, cfg config.Config, executor *action.Executor, resultCh chan<- action.Result) error {
 	for {
 		raw, err := conn.ReadMessage(ctx)
 		if err != nil {
@@ -233,14 +243,14 @@ func readLoop(ctx context.Context, conn wsclient.Conn, cfg config.Config, execut
 			if err != nil {
 				return sendCommandRejection(ctx, conn, "", err, "invalid_parameters")
 			}
-			go handleCommand(ctx, conn, cfg, executor, command)
+			go handleCommand(ctx, conn, cfg, executor, resultCh, command)
 		default:
 			return fmt.Errorf("unsupported server message type %q", envelope.MessageType)
 		}
 	}
 }
 
-func handleCommand(ctx context.Context, conn wsclient.Conn, cfg config.Config, executor *action.Executor, command protocol.Command) {
+func handleCommand(ctx context.Context, conn wsclient.Conn, cfg config.Config, executor *action.Executor, resultCh chan<- action.Result, command protocol.Command) {
 	if err := protocol.ValidateCommand(command, cfg.NodeID, time.Now().UTC()); err != nil {
 		_ = sendCommandRejection(ctx, conn, command.RequestID, err, validationCode(err))
 		return
@@ -253,18 +263,42 @@ func handleCommand(ctx context.Context, conn wsclient.Conn, cfg config.Config, e
 	}
 	// The action must finish locally even when this WSS session is lost. The
 	// journal makes the terminal result available for reconciliation after the
-	// next connection; only result delivery uses the current session context.
+	// next connection. Queue delivery separately because this session context
+	// is canceled as soon as the WSS connection drops.
 	result := executor.Execute(context.Background(), command)
-	payload := map[string]any{
-		"request_id": command.RequestID,
-		"success":    result.State == "succeeded",
-		"result":     objectValue(result.Result),
+	queueResult(resultCh, result)
+}
+
+func resultLoop(ctx context.Context, conn wsclient.Conn, resultCh chan action.Result) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case result := <-resultCh:
+			if err := sendEnvelope(ctx, conn, protocol.MessageCommandResult, commandResultPayload(result)); err != nil {
+				return requeueResult(resultCh, result, err)
+			}
+		}
 	}
-	if result.State != "succeeded" {
-		payload["error_code"] = result.Code
-		payload["error_message"] = result.Message
+}
+
+func queueResult(resultCh chan<- action.Result, result action.Result) {
+	select {
+	case resultCh <- result:
+	case <-time.After(10 * time.Second):
+		// The journal remains the durable fallback if an unusually large burst
+		// fills the in-memory queue while the endpoint is unavailable.
 	}
-	_ = sendEnvelope(ctx, conn, protocol.MessageCommandResult, payload)
+}
+
+func requeueResult(resultCh chan action.Result, result action.Result, sendErr error) error {
+	// Keep the retry bounded so a broken connection cannot deadlock session
+	// shutdown. The journal remains the durable fallback if the queue is full.
+	select {
+	case resultCh <- result:
+	default:
+	}
+	return sendErr
 }
 
 func sendCommandRejection(ctx context.Context, conn wsclient.Conn, requestID string, err error, code string) error {
@@ -350,15 +384,19 @@ func sendEnvelope(ctx context.Context, conn wsclient.Conn, messageType string, p
 func reconcilePayload(results []action.Result) []map[string]any {
 	values := make([]map[string]any, 0, len(results))
 	for _, result := range results {
-		values = append(values, map[string]any{
-			"request_id":    result.RequestID,
-			"success":       result.State == "succeeded",
-			"error_code":    result.Code,
-			"error_message": result.Message,
-			"result":        objectValue(result.Result),
-		})
+		values = append(values, commandResultPayload(result))
 	}
 	return values
+}
+
+func commandResultPayload(result action.Result) map[string]any {
+	return map[string]any{
+		"request_id":    result.RequestID,
+		"success":       result.State == "succeeded",
+		"error_code":    result.Code,
+		"error_message": result.Message,
+		"result":        objectValue(result.Result),
+	}
 }
 
 func objectValue(value any) map[string]any {
