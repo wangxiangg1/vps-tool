@@ -3,48 +3,80 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#0d1112">
+    <meta name="theme-color" content="#f5faf8">
     <meta name="description" content="vps-tool 节点集中管理工作台">
     <title>vps-tool · 节点工作台</title>
-    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css?v=stitch-20260824-final">
   </head>
   <body>
     <div id="app" class="app-shell">
       <section id="loginView" class="login-view" aria-labelledby="loginTitle">
-        <div class="login-frame">
-          <div class="login-masthead">
-            <div class="brand-lockup">
-              <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
-              <span class="brand-name">VPS TOOL</span>
-            </div>
-            <span class="masthead-code">CONTROL / 01</span>
-          </div>
-          <div class="login-rule" aria-hidden="true"><span></span></div>
-          <div class="login-content">
-            <div class="login-intro">
-              <p class="eyebrow">NIGHT FLIGHT CONTROL ROOM</p>
-              <h1 id="loginTitle">管理员登录</h1>
-              <p class="login-copy">连接主控后查看节点状态与固定操作。</p>
-            </div>
-            <form id="loginForm" class="login-form" novalidate>
-              <div class="form-field">
-                <label for="username">管理员账号</label>
-                <input id="username" name="username" type="text" autocomplete="username" required autofocus>
+        <div class="login-shell">
+          <div class="login-story">
+            <div class="story-top">
+              <div class="story-brand">
+                <span class="brand-tile" aria-hidden="true"><span class="brand-bars"><i></i><i></i><i></i></span></span>
+                <span class="brand-name">VPS TOOL</span>
               </div>
-              <div class="form-field">
-                <label for="password">密码</label>
-                <input id="password" name="password" type="password" autocomplete="current-password" required>
-              </div>
-              <button id="loginButton" class="button button-primary button-wide" type="submit">
-                <span class="button-icon" aria-hidden="true">↗</span>
-                登录主控
-              </button>
-              <p id="loginMessage" class="form-message" role="alert" aria-live="polite"></p>
-            </form>
+              <span class="connection-pill"><span class="status-dot status-dot-online" aria-hidden="true"></span><span id="loginHealthText">正在检查主控</span></span>
+            </div>
+            <div class="story-content">
+              <span class="story-rule" aria-hidden="true"></span>
+              <h1 id="loginTitle">把每一台 VPS 的状态，<br><em>收进一个视图。</em></h1>
+              <p>用固定操作管理节点、出口 IP、WARP 与 3x-ui，让每一次变更都清楚、可追踪。</p>
+            </div>
+            <div class="story-footer">
+              <div class="story-stat"><span>DATA PLANE</span><strong>READY</strong></div>
+              <div class="story-stat"><span>AUDIT TRAIL</span><strong>ENABLED</strong></div>
+              <div class="story-stat"><span>SESSION</span><strong>PRIVATE</strong></div>
+            </div>
           </div>
-          <div class="login-footer">
-            <span>SESSION / COOKIE</span>
-            <span id="loginHealthText">正在检查主控</span>
+
+          <div class="login-panel">
+            <div class="login-form-inner">
+              <div class="login-panel-heading">
+                <span class="section-kicker">SECURE ACCESS</span>
+                <h2>管理员登录</h2>
+                <p>连接主控后查看节点状态与固定操作。</p>
+              </div>
+              <form id="loginForm" class="login-form" novalidate>
+                <div class="form-field">
+                  <label for="username">管理员账号</label>
+                  <div class="input-wrap">
+                    <span class="material-symbols-outlined input-icon" aria-hidden="true">account_circle</span>
+                    <input id="username" name="username" type="text" autocomplete="username" required autofocus placeholder="admin@vpstool.local">
+                  </div>
+                </div>
+                <div class="form-field">
+                  <div class="field-label-row">
+                    <label for="password">密码</label>
+                    <span class="field-hint">CONTROL PLANE</span>
+                  </div>
+                  <div class="input-wrap">
+                    <span class="material-symbols-outlined input-icon" aria-hidden="true">lock</span>
+                    <input id="password" name="password" type="password" autocomplete="current-password" required placeholder="输入密码">
+                    <button id="passwordToggle" class="input-action" type="button" title="显示或隐藏密码" aria-label="显示或隐藏密码"><span class="material-symbols-outlined" aria-hidden="true">visibility_off</span></button>
+                  </div>
+                </div>
+                <label class="remember-control" for="rememberSession">
+                  <input id="rememberSession" type="checkbox">
+                  <span class="custom-checkbox" aria-hidden="true"></span>
+                  <span>保持当前设备登录</span>
+                </label>
+                <button id="loginButton" class="button button-primary button-wide" type="submit">
+                  <span class="button-icon material-symbols-outlined" aria-hidden="true">login</span>
+                  登录主控
+                </button>
+                <p id="loginMessage" class="form-message" role="alert" aria-live="polite"></p>
+              </form>
+              <div class="login-security">
+                <span class="section-kicker">PROTECTED SESSION</span>
+                <span><span class="material-symbols-outlined" aria-hidden="true">verified_user</span> 会话仅保存在当前浏览器，退出后立即失效。</span>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -52,223 +84,277 @@
       <section id="dashboardView" class="dashboard-view" hidden aria-label="节点管理工作台">
         <header class="topbar">
           <div class="topbar-brand">
-            <div class="brand-lockup">
-              <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+            <div class="story-brand">
+              <span class="brand-tile" aria-hidden="true"><span class="brand-bars"><i></i><i></i><i></i></span></span>
               <span class="brand-name">VPS TOOL</span>
             </div>
-            <span class="topbar-divider" aria-hidden="true"></span>
-            <span class="topbar-context">主控节点 / 单实例</span>
           </div>
-          <div class="topbar-status" aria-live="polite">
-            <span id="healthDot" class="status-dot status-dot-unknown" aria-hidden="true"></span>
-            <span id="healthLabel">主控状态未知</span>
-            <span id="healthDetail" class="topbar-detail">等待检测</span>
+          <div class="topbar-kpis" aria-label="主控摘要">
+            <div class="top-kpi"><span>TOTAL AGENTS</span><strong id="topAgentCount">—</strong></div>
+            <div class="top-kpi"><span>ACTIVE TASKS</span><strong id="topTaskCount">—</strong></div>
+            <div class="top-kpi"><span>LAST SYNC</span><strong id="topLastSync">—</strong></div>
           </div>
           <div class="topbar-actions">
-            <span id="lastUpdated" class="last-updated">数据更新时间：—</span>
-            <button id="refreshButton" class="icon-button" type="button" title="刷新节点和操作记录" aria-label="刷新节点和操作记录">
-              <span aria-hidden="true">↻</span>
+            <label class="global-search" for="globalSearch">
+              <span class="material-symbols-outlined" aria-hidden="true">search</span>
+              <input id="globalSearch" type="search" placeholder="搜索节点…" autocomplete="off">
+            </label>
+            <button id="refreshButton" class="topbar-icon-button" type="button" title="刷新节点和操作记录" aria-label="刷新节点和操作记录">
+              <span class="material-symbols-outlined" aria-hidden="true">sync</span>
             </button>
+            <div class="operator-chip">
+              <span class="operator-avatar material-symbols-outlined" aria-hidden="true">person</span>
+              <span><strong id="operatorName">管理员</strong><small>主控管理员</small></span>
+            </div>
             <button id="logoutButton" class="text-button" type="button">退出登录</button>
           </div>
-          <div class="signal-track" aria-hidden="true"><span></span></div>
         </header>
 
-        <div class="workspace">
+        <div class="dashboard-layout">
           <aside class="side-rail" aria-label="工作台导航">
-            <div class="rail-readout">
-              <span class="rail-label">WATCH / LIVE</span>
-              <strong id="railOnlineCount">—</strong>
-              <span>在线节点</span>
-            </div>
             <nav class="side-nav">
-              <button class="nav-button is-active" type="button" data-scroll-target="nodesSection" aria-current="page">
-                <span class="nav-icon" aria-hidden="true">◈</span>
-                <span>节点</span>
+              <button id="nodesNavButton" class="nav-button is-active" type="button" data-view="nodes" aria-current="page">
+                <span class="nav-icon material-symbols-outlined" aria-hidden="true">dns</span>
+                <span><strong>节点</strong><small>Nodes</small></span>
                 <span id="navNodeCount" class="nav-count">—</span>
               </button>
-              <button class="nav-button" type="button" data-scroll-target="activitySection">
-                <span class="nav-icon" aria-hidden="true">≋</span>
-                <span>任务与记录</span>
+              <button id="tasksNavButton" class="nav-button" type="button" data-view="tasks">
+                <span class="nav-icon material-symbols-outlined" aria-hidden="true">assignment</span>
+                <span><strong>任务</strong><small>Tasks</small></span>
                 <span id="navActivityCount" class="nav-count">—</span>
               </button>
+              <button id="auditNavButton" class="nav-button" type="button" data-view="audit">
+                <span class="nav-icon material-symbols-outlined" aria-hidden="true">policy</span>
+                <span><strong>审计</strong><small>Audit</small></span>
+                <span id="navAuditCount" class="nav-count">—</span>
+              </button>
+              <div class="rail-section-label">基础设施</div>
+              <div class="rail-static-item"><span class="nav-icon material-symbols-outlined" aria-hidden="true">hub</span><span><strong>网络</strong><small>Network</small></span></div>
+              <div class="rail-static-item"><span class="nav-icon material-symbols-outlined" aria-hidden="true">database</span><span><strong>存储</strong><small>Storage</small></span></div>
             </nav>
             <div class="rail-footer">
-              <span class="rail-label">OPERATOR</span>
-              <strong id="operatorName">管理员</strong>
-              <span>会话已建立</span>
+              <span id="railOnlineCount" class="sr-only">—</span>
+              <div class="rail-health">
+                <span id="healthDot" class="status-dot status-dot-unknown" aria-hidden="true"></span>
+                <span id="healthLabel">主控状态未知</span>
+              </div>
+              <span id="healthDetail" class="rail-health-detail">等待检测</span>
+              <span id="lastUpdated" class="last-updated">数据更新时间：—</span>
             </div>
           </aside>
 
-          <main class="main-content">
-            <section class="page-heading" aria-labelledby="pageTitle">
+          <main class="dashboard-main">
+            <section id="nodesView" class="workspace-view" aria-labelledby="pageTitle">
+            <section class="main-heading" aria-labelledby="pageTitle">
               <div>
-                <p class="eyebrow">FLEET / STATUS BOARD</p>
+                <span class="section-kicker">FLEET / STATUS BOARD</span>
                 <h1 id="pageTitle">节点工作台</h1>
                 <p id="viewStatusLine" class="page-subtitle">正在读取节点数据……</p>
               </div>
-              <div class="heading-actions">
-                <button id="activityToggle" class="button button-quiet" type="button" aria-controls="activitySection" aria-expanded="true">
-                  <span class="button-icon" aria-hidden="true">≋</span>
-                  任务与记录
-                </button>
-              </div>
+              <button id="addNodeButton" class="button button-primary" type="button">
+                <span class="button-icon material-symbols-outlined" aria-hidden="true">add</span>
+                添加节点
+              </button>
             </section>
 
             <section class="signal-strip" aria-label="节点摘要">
               <div class="signal-cell signal-cell-main">
-                <span class="signal-label">在线节点</span>
-                <strong id="onlineCount" class="signal-value">—</strong>
+                <span class="signal-label"><span class="material-symbols-outlined" aria-hidden="true">dns</span>在线节点</span>
+                <div class="signal-number"><strong id="onlineCount" class="signal-value">—</strong><span>/ 全部</span></div>
                 <span id="onlineSummary" class="signal-note">等待数据</span>
+                <span class="signal-progress"><i></i></span>
               </div>
-              <div class="signal-cell">
-                <span class="signal-label">WARP 开启</span>
-                <strong id="warpOnCount" class="signal-value">—</strong>
-                <span class="signal-note">节点状态</span>
+              <div class="signal-cell signal-cell-blue">
+                <span class="signal-label"><span class="material-symbols-outlined" aria-hidden="true">shield</span>WARP 开启</span>
+                <div class="signal-number"><strong id="warpOnCount" class="signal-value">—</strong><span>Active</span></div>
+                <span class="signal-note">出口通道状态</span>
+                <span class="signal-progress"><i></i></span>
               </div>
-              <div class="signal-cell">
-                <span class="signal-label">3x-ui 运行</span>
-                <strong id="xuiRunningCount" class="signal-value">—</strong>
-                <span class="signal-note">服务状态</span>
+              <div class="signal-cell signal-cell-tertiary">
+                <span class="signal-label"><span class="material-symbols-outlined" aria-hidden="true">router</span>3x-ui 运行</span>
+                <div class="signal-number"><strong id="xuiRunningCount" class="signal-value">—</strong><span>Routing</span></div>
+                <span class="signal-note">服务单元状态</span>
+                <span class="signal-progress"><i></i></span>
               </div>
-              <div class="signal-cell">
-                <span class="signal-label">状态未知</span>
-                <strong id="unknownCount" class="signal-value">—</strong>
-                <span class="signal-note">需要检查</span>
+              <div class="signal-cell signal-cell-alert">
+                <span class="signal-label"><span class="material-symbols-outlined" aria-hidden="true">warning</span>状态未知</span>
+                <div class="signal-number"><strong id="unknownCount" class="signal-value">—</strong></div>
+                <span class="signal-note">需要检查心跳</span>
               </div>
             </section>
 
             <section id="nodesSection" class="nodes-section" aria-labelledby="nodesTitle">
-              <div class="section-heading">
-                <div>
-                  <p class="eyebrow">INVENTORY</p>
-                  <h2 id="nodesTitle">节点清单</h2>
+              <div class="inventory-card">
+                <div class="inventory-toolbar">
+                  <div class="inventory-tools">
+                    <label class="search-control" for="nodeSearch">
+                      <span class="material-symbols-outlined control-symbol" aria-hidden="true">search</span>
+                      <span class="sr-only">搜索节点</span>
+                      <input id="nodeSearch" type="search" placeholder="搜索名称或 IP…" autocomplete="off">
+                    </label>
+                    <label class="select-control" for="statusFilter">
+                      <span>状态</span>
+                      <select id="statusFilter">
+                        <option value="all">全部</option>
+                        <option value="online">在线</option>
+                        <option value="offline">离线</option>
+                        <option value="unknown">未知</option>
+                      </select>
+                    </label>
+                    <label class="select-control" for="warpFilter">
+                      <span>WARP</span>
+                      <select id="warpFilter">
+                        <option value="all">全部</option>
+                        <option value="on">开启</option>
+                        <option value="off">关闭</option>
+                        <option value="degraded">降级</option>
+                        <option value="unknown">未知</option>
+                      </select>
+                    </label>
+                    <label class="select-control" for="xuiFilter">
+                      <span>3x-ui</span>
+                      <select id="xuiFilter">
+                        <option value="all">全部</option>
+                        <option value="running">运行中</option>
+                        <option value="stopped">已停止</option>
+                        <option value="failed">失败</option>
+                        <option value="not_found">未找到</option>
+                        <option value="unknown">未知</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div id="selectionTools" class="selection-tools" hidden>
+                    <span id="selectionCount" class="selection-count">已选 0 个</span>
+                    <button id="batchButton" class="button button-danger button-small" type="button" disabled><span class="button-icon material-symbols-outlined" aria-hidden="true">playlist_add_check</span>批量操作</button>
+                  </div>
                 </div>
-                <span id="resultCount" class="result-count">—</span>
-              </div>
-
-              <div class="toolbar" role="search" aria-label="节点筛选">
-                <label class="search-control" for="nodeSearch">
-                  <span class="control-symbol" aria-hidden="true">⌕</span>
-                  <span class="sr-only">搜索节点</span>
-                  <input id="nodeSearch" type="search" placeholder="搜索名称或 Node ID" autocomplete="off">
-                </label>
-                <label class="select-control" for="statusFilter">
-                  <span>状态</span>
-                  <select id="statusFilter">
-                    <option value="all">全部</option>
-                    <option value="online">在线</option>
-                    <option value="offline">离线</option>
-                    <option value="unknown">未知</option>
-                  </select>
-                </label>
-                <label class="select-control" for="warpFilter">
-                  <span>WARP</span>
-                  <select id="warpFilter">
-                    <option value="all">全部</option>
-                    <option value="on">开启</option>
-                    <option value="off">关闭</option>
-                    <option value="degraded">降级</option>
-                    <option value="unknown">未知</option>
-                  </select>
-                </label>
-                <label class="select-control" for="xuiFilter">
-                  <span>3x-ui</span>
-                  <select id="xuiFilter">
-                    <option value="all">全部</option>
-                    <option value="running">运行中</option>
-                    <option value="stopped">已停止</option>
-                    <option value="failed">失败</option>
-                    <option value="not_found">未找到</option>
-                    <option value="unknown">未知</option>
-                  </select>
-                </label>
-                <div id="selectionTools" class="selection-tools" hidden>
-                  <span id="selectionCount" class="selection-count">已选 0 个</span>
-                  <button id="batchButton" class="button button-danger button-small" type="button" disabled>
-                    <span class="button-icon" aria-hidden="true">⇄</span>
-                    批量操作
-                  </button>
+                <div class="inventory-heading">
+                  <div>
+                    <span class="section-kicker">INVENTORY</span>
+                    <h2 id="nodesTitle">节点清单</h2>
+                  </div>
+                  <span class="table-caption">实时 Agent 状态</span>
                 </div>
-              </div>
-
-              <div id="nodeState" class="state-message" role="status" aria-live="polite">
-                <span class="state-spinner" aria-hidden="true"></span>
-                正在读取节点数据……
-              </div>
-              <div id="nodeTableWrap" class="table-wrap" hidden>
-                <table class="node-table">
-                  <caption class="sr-only">节点状态列表</caption>
-                  <thead>
-                    <tr>
-                      <th class="select-column">
-                        <label class="checkbox-label" title="选择全部在线节点">
-                          <input id="selectAllNodes" type="checkbox" aria-label="选择全部在线节点">
-                          <span class="custom-checkbox" aria-hidden="true"></span>
-                        </label>
-                      </th>
-                      <th>节点</th>
-                      <th>当前出口 IP</th>
-                      <th>WARP</th>
-                      <th>3x-ui</th>
-                      <th>资源</th>
-                      <th>Uptime</th>
-                      <th>最后在线</th>
-                      <th class="action-column"><span class="sr-only">操作</span></th>
-                    </tr>
-                  </thead>
-                  <tbody id="nodesBody"></tbody>
-                </table>
+                <div id="nodeState" class="state-message" role="status" aria-live="polite"><span class="state-spinner" aria-hidden="true"></span>正在读取节点数据……</div>
+                <div id="nodeTableWrap" class="table-wrap" hidden>
+                  <table class="node-table">
+                    <caption class="sr-only">节点状态列表</caption>
+                    <thead>
+                      <tr>
+                        <th class="select-column"><label class="checkbox-label" title="选择全部在线节点"><input id="selectAllNodes" type="checkbox" aria-label="选择全部在线节点"><span class="custom-checkbox" aria-hidden="true"></span></label></th>
+                        <th>节点</th>
+                        <th>公共 IP</th>
+                        <th class="service-heading">服务</th>
+                        <th>资源</th>
+                        <th>Uptime</th>
+                        <th>最后心跳</th>
+                        <th class="action-column"><span class="sr-only">操作</span></th>
+                      </tr>
+                    </thead>
+                    <tbody id="nodesBody"></tbody>
+                  </table>
+                  <div class="table-footer"><span>当前显示 <strong id="resultCount">—</strong> 个节点</span><span class="table-footer-note">固定操作可从节点详情进入</span></div>
+                </div>
               </div>
             </section>
+            </section>
 
-            <section id="activitySection" class="activity-section" aria-labelledby="activityTitle">
-              <div class="section-heading activity-heading">
+            <section id="nodeDetailView" class="workspace-view node-detail-view" hidden aria-labelledby="detailTitle">
+              <div class="detail-view-heading">
+                <button id="closeDrawerButton" class="icon-button detail-back-button" type="button" title="返回节点清单" aria-label="返回节点清单"><span class="material-symbols-outlined" aria-hidden="true">arrow_back</span></button>
                 <div>
-                  <p class="eyebrow">TRACE / AUDIT</p>
-                  <h2 id="activityTitle">任务与操作记录</h2>
+                  <span class="section-kicker">NODE / LIVE DETAIL</span>
+                  <h1 id="detailTitle">节点详情</h1>
                 </div>
-                <button id="activityCollapse" class="icon-button" type="button" title="收起任务与记录" aria-label="收起任务与记录" aria-expanded="true">
-                  <span aria-hidden="true">⌃</span>
-                </button>
               </div>
-              <div id="activityBody" class="activity-body">
-                <div class="activity-tabs" role="tablist" aria-label="任务与操作记录">
-                  <button class="tab-button is-active" type="button" role="tab" aria-selected="true" data-activity-tab="actions">操作记录 <span id="actionCount" class="tab-count">—</span></button>
-                  <button class="tab-button" type="button" role="tab" aria-selected="false" data-activity-tab="tasks">定时任务 <span id="taskCount" class="tab-count">—</span></button>
+              <div id="detailContent" class="detail-view-content"></div>
+            </section>
+
+            <section id="auditView" class="workspace-view activity-section" hidden aria-labelledby="auditTitle">
+              <div class="view-toolbar">
+                <div class="activity-tabs" role="tablist" aria-label="操作与任务视图">
+                  <button class="tab-button is-active" type="button" role="tab" aria-selected="true" data-view="audit"><span class="material-symbols-outlined" aria-hidden="true">policy</span>操作记录 <span id="actionCount" class="tab-count">—</span></button>
+                  <button class="tab-button" type="button" role="tab" aria-selected="false" data-view="tasks"><span class="material-symbols-outlined" aria-hidden="true">schedule</span>定时任务 <span id="taskCount" class="tab-count">—</span></button>
                 </div>
-                <div id="activityContent" class="activity-content" role="tabpanel"></div>
+                <div class="view-toolbar-actions">
+                  <label class="global-search activity-search" for="auditSearch"><span class="material-symbols-outlined" aria-hidden="true">filter_list</span><input id="auditSearch" type="search" placeholder="筛选操作记录…" autocomplete="off"></label>
+                  <button id="exportAuditButton" class="button button-primary" type="button"><span class="button-icon material-symbols-outlined" aria-hidden="true">download</span>导出日志</button>
+                </div>
               </div>
+              <div class="activity-heading activity-page-heading">
+                <div><span class="section-kicker">TRACE / AUDIT</span><h1 id="auditTitle">操作记录</h1><p class="page-subtitle">固定操作的请求、回执与失败信息。</p></div>
+              </div>
+              <div id="auditSummary" class="audit-summary" aria-label="操作摘要"></div>
+              <div id="activityContent" class="activity-content activity-content-page" role="tabpanel"></div>
+            </section>
+
+            <section id="tasksView" class="workspace-view activity-section" hidden aria-labelledby="tasksTitle">
+              <div class="view-toolbar">
+                <div class="activity-tabs" role="tablist" aria-label="操作与任务视图">
+                  <button class="tab-button" type="button" role="tab" aria-selected="false" data-view="audit"><span class="material-symbols-outlined" aria-hidden="true">policy</span>操作记录</button>
+                  <button class="tab-button is-active" type="button" role="tab" aria-selected="true" data-view="tasks"><span class="material-symbols-outlined" aria-hidden="true">schedule</span>定时任务</button>
+                </div>
+                <button id="newTaskButton" class="button button-primary" type="button"><span class="button-icon material-symbols-outlined" aria-hidden="true">add</span>新建任务</button>
+              </div>
+              <div class="activity-heading activity-page-heading"><div><span class="section-kicker">SCHEDULE / CONTROL</span><h1 id="tasksTitle">定时任务</h1><p class="page-subtitle">按时区调度固定状态变更，所有执行仍进入审计记录。</p></div></div>
+              <div id="tasksContent" class="activity-content activity-content-page" role="tabpanel"></div>
             </section>
           </main>
         </div>
       </section>
 
-      <div id="drawerScrim" class="drawer-scrim" hidden></div>
-      <aside id="detailDrawer" class="detail-drawer" hidden aria-labelledby="detailTitle" aria-modal="true" role="dialog">
-        <div class="drawer-header">
-          <div>
-            <p class="eyebrow">NODE DETAIL</p>
-            <h2 id="detailTitle">节点详情</h2>
-          </div>
-          <button id="closeDrawerButton" class="icon-button" type="button" title="关闭节点详情" aria-label="关闭节点详情">
-            <span aria-hidden="true">×</span>
-          </button>
-        </div>
-        <div id="detailContent" class="drawer-content"></div>
-      </aside>
-
       <dialog id="confirmDialog" class="confirm-dialog" aria-labelledby="confirmTitle">
         <form id="confirmForm" method="dialog">
-          <div class="dialog-mark" aria-hidden="true">!</div>
-          <p class="eyebrow">CONFIRM ACTION</p>
+          <div class="dialog-mark"><span class="material-symbols-outlined" aria-hidden="true">warning</span></div>
+          <span class="section-kicker">CONFIRM ACTION</span>
           <h2 id="confirmTitle">确认操作</h2>
           <p id="confirmMessage" class="dialog-message"></p>
           <div id="confirmDetails" class="dialog-details"></div>
-          <div class="dialog-actions">
-            <button class="button button-quiet" type="submit" value="cancel">取消</button>
-            <button id="confirmProceed" class="button button-danger" type="submit" value="confirm">确认执行</button>
+          <div class="dialog-actions"><button class="button button-quiet" type="submit" value="cancel">取消</button><button id="confirmProceed" class="button button-danger" type="submit" value="confirm">确认执行</button></div>
+        </form>
+      </dialog>
+
+      <dialog id="nodeDialog" class="form-dialog" aria-labelledby="nodeDialogTitle">
+        <form id="nodeForm">
+          <div class="form-dialog-header"><div><span class="section-kicker">FLEET / ENROLLMENT</span><h2 id="nodeDialogTitle">添加节点</h2></div><button class="icon-button" type="button" data-close-dialog="nodeDialog" aria-label="关闭"><span class="material-symbols-outlined" aria-hidden="true">close</span></button></div>
+          <p class="dialog-message">创建后会生成一个短时有效、仅显示一次的注册 Token。</p>
+          <div class="dialog-form-grid">
+            <label class="form-field"><span>节点名称</span><input id="nodeName" name="name" required maxlength="100" placeholder="例如 Tokyo Edge 01"></label>
+            <label class="form-field"><span>地区</span><input id="nodeRegion" name="region" maxlength="100" placeholder="例如 Tokyo / JP"></label>
+            <label class="form-field"><span>标签</span><input id="nodeTags" name="tags" placeholder="用英文逗号分隔"></label>
+            <label class="form-field"><span>WARP 适配器</span><select id="nodeWarpAdapter" name="warp_adapter"><option value="generic">generic</option><option value="warp-cli">warp-cli</option><option value="wgcf">wgcf</option></select></label>
+            <label class="form-field"><span>3x-ui 服务名</span><input id="nodeXuiService" name="xui_service" value="x-ui" required maxlength="128"></label>
+            <label class="form-field form-field-wide"><span>备注</span><textarea id="nodeNotes" name="notes" rows="3" maxlength="2000"></textarea></label>
           </div>
+          <p id="nodeFormMessage" class="form-message" role="alert"></p>
+          <div class="dialog-actions"><button class="button button-quiet" type="button" data-close-dialog="nodeDialog">取消</button><button id="createNodeSubmit" class="button button-primary" type="submit">创建并生成 Token</button></div>
+        </form>
+      </dialog>
+
+      <dialog id="tokenDialog" class="form-dialog token-dialog" aria-labelledby="tokenDialogTitle">
+        <div class="form-dialog-header"><div><span class="section-kicker">ONE-TIME TOKEN</span><h2 id="tokenDialogTitle">节点已创建</h2></div><button class="icon-button" type="button" data-close-dialog="tokenDialog" aria-label="关闭"><span class="material-symbols-outlined" aria-hidden="true">close</span></button></div>
+        <p class="dialog-message">注册 Token 仅显示这一次，请立即用于 Agent 注册。</p>
+        <div class="token-readout"><code id="registrationToken"></code><button id="copyTokenButton" class="icon-button" type="button" aria-label="复制注册 Token" title="复制注册 Token"><span class="material-symbols-outlined" aria-hidden="true">content_copy</span></button></div>
+        <p id="tokenExpiry" class="table-meta"></p>
+        <div class="dialog-actions"><button class="button button-primary" type="button" data-close-dialog="tokenDialog">完成</button></div>
+      </dialog>
+
+      <dialog id="taskDialog" class="form-dialog" aria-labelledby="taskDialogTitle">
+        <form id="taskForm">
+          <div class="form-dialog-header"><div><span class="section-kicker">SCHEDULE / ACTION</span><h2 id="taskDialogTitle">新建定时任务</h2></div><button class="icon-button" type="button" data-close-dialog="taskDialog" aria-label="关闭"><span class="material-symbols-outlined" aria-hidden="true">close</span></button></div>
+          <p class="dialog-message">任务只能调用固定状态变更 Action，不接受命令或脚本。</p>
+          <div class="dialog-form-grid">
+            <label class="form-field"><span>任务名称</span><input id="taskName" required maxlength="100" placeholder="例如 每日切换出口 IP"></label>
+            <label class="form-field"><span>固定 Action</span><select id="taskAction"><option value="change_ip">切换出口 IP</option><option value="warp_on">开启 WARP</option><option value="warp_off">关闭 WARP</option><option value="restart_xui">重启 3x-ui</option></select></label>
+            <label class="form-field form-field-wide"><span>目标节点（可多选）</span><select id="taskNodes" multiple required size="4"></select></label>
+            <label class="form-field"><span>调度类型</span><select id="taskScheduleType"><option value="daily">每日</option><option value="weekly">每周</option><option value="cron">Cron</option></select></label>
+            <label class="form-field"><span>调度值</span><input id="taskScheduleValue" required maxlength="100" value="03:00"><small>每日使用 HH:MM；每周使用“星期 0-6 + HH:MM”。</small></label>
+            <label class="form-field"><span>时区</span><input id="taskTimezone" required maxlength="64" value="Asia/Shanghai"></label>
+            <label class="form-field"><span>最大重试</span><select id="taskRetries"><option value="0">0</option><option value="1">1</option><option value="2" selected>2</option><option value="3">3</option></select></label>
+            <label class="remember-control form-field-wide" for="taskEnabled"><input id="taskEnabled" type="checkbox" checked><span class="custom-checkbox" aria-hidden="true"></span><span>创建后立即启用</span></label>
+          </div>
+          <p id="taskFormMessage" class="form-message" role="alert"></p>
+          <div class="dialog-actions"><button class="button button-quiet" type="button" data-close-dialog="taskDialog">取消</button><button id="createTaskSubmit" class="button button-primary" type="submit">创建任务</button></div>
         </form>
       </dialog>
 
@@ -277,6 +363,6 @@
     <script>
       window.VPS_TOOL_CONFIG = window.VPS_TOOL_CONFIG || {};
     </script>
-    <script src="app.js" defer></script>
+    <script src="app.js?v=stitch-20260824-workspace" defer></script>
   </body>
 </html>
