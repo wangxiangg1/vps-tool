@@ -30,6 +30,10 @@ jobs:
             ensure_alpine_dependencies
             select_privilege_tool
             test "$PRIVILEGE_TOOL" = doas
+            parse_arguments --node-id test-node --registration-token test-token --wss-url wss://panel.example.com/agent --xui-unit x-ui --warp-adapter generic
+            test "$VPS_AGENT_NODE_ID" = test-node
+            test "$VPS_AGENT_REGISTRATION_TOKEN" = test-token
+            test "$VPS_AGENT_WSS_URL" = wss://panel.example.com/agent
             ensure_identity
             TMP_DIR="$(mktemp -d)"
             install_policy

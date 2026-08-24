@@ -57,12 +57,21 @@ backend starts with WARP ON and cycles through two documentation IPs.
 
 The public release includes `vps-agent`, the fixed root Helper, an installer,
 and `SHA256SUMS` for both Linux architectures. Create a node in the control
-plane first. The control plane's one-time-token dialog now generates a complete
-copyable install command containing the node ID, WSS endpoint, service settings,
-and one-time token. Run that command in a root shell on the target VPS; it
-downloads the release installer and starts enrollment without manually copying
-several environment variables. The token is intentionally visible in the
-command and expires after the enrollment window.
+plane first. The control plane's one-time-token dialog generates one short
+command that streams the installer from GitHub and passes the node settings and
+one-time token as arguments. Run that command in a root shell on the target VPS;
+the installer remains hosted in the GitHub release instead of being embedded in
+the copied command. The token is intentionally visible in the command and
+expires after the enrollment window.
+
+The generated command has this shape:
+
+```bash
+(command -v curl >/dev/null 2>&1 && curl -fsSL https://github.com/wangxiangg1/vps-tool/releases/latest/download/install-agent.sh || wget -qO- https://github.com/wangxiangg1/vps-tool/releases/latest/download/install-agent.sh) | sh -s -- --node-id 'node-id' --registration-token 'one-time-token' --wss-url 'wss://panel.example.com/agent' --xui-unit 'x-ui' --warp-adapter 'generic'
+```
+
+The installer accepts these command-line arguments as well as the equivalent
+`VPS_AGENT_*` environment variables for manual or automated installation.
 
 For manual or automated installation, export the one-time registration values
 and run the installer as root:

@@ -14,31 +14,15 @@
   const shellQuote = (value) => `'${String(value ?? "").replace(/'/g, "'\\''")}'`;
   const agentWssUrl = () => `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/agent`;
   const buildAgentInstallCommand = (node, registrationToken) => {
-    const assignments = [
-      `VPS_AGENT_NODE_ID=${shellQuote(node.id)}`,
-      `VPS_AGENT_REGISTRATION_TOKEN=${shellQuote(registrationToken)}`,
-      `VPS_AGENT_WSS_URL=${shellQuote(agentWssUrl())}`,
-      `VPS_AGENT_XUI_UNIT=${shellQuote(node.xui_service || "x-ui")}`,
-      `VPS_AGENT_WARP_ADAPTER=${shellQuote(node.warp_adapter || "generic")}`,
-    ].join(" \\\n");
-    const bootstrap = [
-      "set -eu",
-      "installer_url=\"https://github.com/wangxiangg1/vps-tool/releases/latest/download/install-agent.sh\"",
-      "tmp=\"/tmp/vps-tool-install.sh\"",
-      "if command -v curl >/dev/null 2>&1; then",
-      "  curl --fail --silent --show-error --location \"$installer_url\" -o \"$tmp\"",
-      "else",
-      "  wget -qO \"$tmp\" \"$installer_url\"",
-      "fi",
-      "chmod 0755 \"$tmp\"",
-      "if [ \"$(id -u)\" -eq 0 ]; then",
-      "  /bin/sh \"$tmp\"",
-      "else",
-      "  sudo --preserve-env=VPS_AGENT_NODE_ID,VPS_AGENT_REGISTRATION_TOKEN,VPS_AGENT_WSS_URL,VPS_AGENT_XUI_UNIT,VPS_AGENT_WARP_ADAPTER /bin/sh \"$tmp\"",
-      "fi",
-      "rm -f \"$tmp\"",
-    ].join("\n");
-    return `${assignments} \\\nsh -c ${shellQuote(bootstrap)}`;
+    const installerUrl = "https://github.com/wangxiangg1/vps-tool/releases/latest/download/install-agent.sh";
+    const args = [
+      "--node-id", shellQuote(node.id),
+      "--registration-token", shellQuote(registrationToken),
+      "--wss-url", shellQuote(agentWssUrl()),
+      "--xui-unit", shellQuote(node.xui_service || "x-ui"),
+      "--warp-adapter", shellQuote(node.warp_adapter || "generic"),
+    ].join(" ");
+    return `(command -v curl >/dev/null 2>&1 && curl -fsSL ${installerUrl} || wget -qO- ${installerUrl}) | sh -s -- ${args}`;
   };
   const actionLabels = {
     get_status: "刷新状态", get_ip: "获取出口 IP", warp_on: "开启 WARP",

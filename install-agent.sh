@@ -20,6 +20,56 @@ PRIVILEGE_TOOL=""
 log() { printf '[vps-tool] %s\n' "$*"; }
 die() { printf '[vps-tool] error: %s\n' "$*" >&2; exit 1; }
 
+usage() {
+  cat <<'EOF'
+Usage: install-agent.sh [options]
+
+Options:
+  --node-id ID
+  --registration-token TOKEN
+  --wss-url URL
+  --xui-unit UNIT
+  --warp-adapter ADAPTER
+EOF
+}
+
+parse_arguments() {
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --node-id)
+        [ "$#" -ge 2 ] || die "missing value for --node-id"
+        VPS_AGENT_NODE_ID="$2"
+        ;;
+      --registration-token)
+        [ "$#" -ge 2 ] || die "missing value for --registration-token"
+        VPS_AGENT_REGISTRATION_TOKEN="$2"
+        ;;
+      --wss-url)
+        [ "$#" -ge 2 ] || die "missing value for --wss-url"
+        VPS_AGENT_WSS_URL="$2"
+        ;;
+      --xui-unit)
+        [ "$#" -ge 2 ] || die "missing value for --xui-unit"
+        VPS_AGENT_XUI_UNIT="$2"
+        ;;
+      --warp-adapter)
+        [ "$#" -ge 2 ] || die "missing value for --warp-adapter"
+        VPS_AGENT_WARP_ADAPTER="$2"
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      *)
+        die "unknown argument: $1 (run with --help for usage)"
+        ;;
+    esac
+    shift 2
+  done
+  export VPS_AGENT_NODE_ID VPS_AGENT_REGISTRATION_TOKEN VPS_AGENT_WSS_URL
+  export VPS_AGENT_XUI_UNIT VPS_AGENT_WARP_ADAPTER
+}
+
 cleanup() {
   if [ -n "${TMP_DIR:-}" ] && [ -d "$TMP_DIR" ]; then
     rm -rf -- "$TMP_DIR"
@@ -335,5 +385,6 @@ main() {
 }
 
 if [ "${VPS_TOOL_INSTALLER_LIBRARY_ONLY:-0}" != "1" ]; then
+  parse_arguments "$@"
   main "$@"
 fi
