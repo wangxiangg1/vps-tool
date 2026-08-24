@@ -66,27 +66,51 @@ export VPS_AGENT_REGISTRATION_TOKEN="one-time-registration-token"
 export VPS_AGENT_WSS_URL="wss://panel.example.com/agent"
 export VPS_AGENT_XUI_UNIT="x-ui"
 export VPS_AGENT_WARP_ADAPTER="generic"
-curl --fail --silent --show-error --location \
-  https://github.com/wangxiangg1/vps-tool/releases/latest/download/install-agent.sh \
-  -o /tmp/vps-tool-install.sh
+installer_url="https://github.com/wangxiangg1/vps-tool/releases/latest/download/install-agent.sh"
+if command -v curl >/dev/null 2>&1; then
+  curl --fail --silent --show-error --location "$installer_url" -o /tmp/vps-tool-install.sh
+else
+  wget -qO /tmp/vps-tool-install.sh "$installer_url"
+fi
 chmod 0755 /tmp/vps-tool-install.sh
-sudo --preserve-env=VPS_AGENT_NODE_ID,VPS_AGENT_REGISTRATION_TOKEN,VPS_AGENT_WSS_URL,VPS_AGENT_XUI_UNIT,VPS_AGENT_WARP_ADAPTER \
-  /bin/bash /tmp/vps-tool-install.sh
+if [ "$(id -u)" -eq 0 ]; then
+  /bin/sh /tmp/vps-tool-install.sh
+else
+  sudo --preserve-env=VPS_AGENT_NODE_ID,VPS_AGENT_REGISTRATION_TOKEN,VPS_AGENT_WSS_URL,VPS_AGENT_XUI_UNIT,VPS_AGENT_WARP_ADAPTER \
+    /bin/sh /tmp/vps-tool-install.sh
+fi
 rm -f /tmp/vps-tool-install.sh
 ```
 
+Minimal Alpine LXC images commonly open a root shell and do not include
+`sudo` yet. In that case, export the same variables and invoke
+`/bin/sh /tmp/vps-tool-install.sh` directly; the installer adds Alpine's `doas`
+for the restricted Agent-to-Helper policy.
+
 The installer detects `linux/amd64` or `linux/arm64`, downloads the matching
 Agent and Helper, verifies both against the release checksum list, creates the
-dedicated `vps-agent` user, installs a fixed `sudoers` rule, and enables
-`vps-agent.service`. It keeps an existing `/etc/vps-agent/agent.json` during
+dedicated `vps-agent` user, and installs a fixed privilege rule. On systemd
+hosts it uses `sudo` and enables `vps-agent.service`; on Alpine/OpenRC it uses
+`doas`, installs
+`/etc/init.d/vps-agent` and enables it in the `default` runlevel. On Alpine the
+installer uses `apk` to add only missing `curl`, `doas`, `coreutils`, and CA
+certificate packages. It keeps an existing `/etc/vps-agent/agent.json` during
 upgrades, so a long-term credential is not replaced. The first successful
 registration atomically replaces the one-time token in that file.
 
-The service user can invoke only `/usr/local/libexec/vps-agent-helper`; the
+Alpine compatibility requires OpenRC and a working `sudo` policy. The Agent
+and Helper binaries are static Linux builds, but WARP through `wgcf` still
+requires the container to expose `/dev/net/tun` and `CAP_NET_ADMIN`. An LXC
+container without those privileges can connect to the control plane and report
+basic host state, but WARP changes will fail. The configured `x-ui` service
+name is managed through systemd or OpenRC according to the host.
+
+The service user can invoke only `/usr/local/libexec/vps-agent-helper` through
+`sudo` or `doas`; the
 Helper accepts only the documented fixed argument forms. The Helper itself is
-root-owned and validates every external executable path, systemd unit, adapter,
+root-owned and validates every external executable path, service name, adapter,
 watchdog token, deadline, and output. It supports `warp-cli`, `wgcf` via
-`wg-quick`, `warp-go` via its fixed systemd unit, and `generic` auto-detection.
+`wg-quick`, `warp-go` via systemd or OpenRC, and `generic` auto-detection.
 
 ## Fixed Helper Contract
 
@@ -116,11 +140,15 @@ output is `helper_failed`.
 
 The release installer places the Helper as a root-owned executable and grants
 the Agent user a single `sudo -n` rule for that path. The Agent never invokes
-`systemctl`, a shell, an interpreter, or arbitrary arguments itself. A finite
-systemd transient unit runs the watchdog independently of the WSS process and
-attempts to restore WARP if the Agent disappears during `change_ip`.
+a service manager, a shell, an interpreter, or arbitrary arguments itself. A
+finite systemd transient unit runs the watchdog independently of the WSS
+process on systemd hosts. On OpenRC hosts the Helper starts a detached,
+token-keyed child under `/run/vps-agent/watchdogs` and checks its command line
+before terminating it.
 
-## systemd installation
+## Service installation
+
+### systemd installation
 
 Create `/etc/vps-agent/agent.json` as root with mode `0600`, install the binary
 as `/usr/local/bin/vps-agent` owned by root, and run it with a dedicated low
@@ -154,6 +182,21 @@ vps-agent.service`, then verify `systemctl is-active vps-agent.service`.
 `NoNewPrivileges=false` is deliberate: the service uses a `sudo -n` rule that
 allows only the installed fixed Helper. Do not broaden that rule to
 `systemctl`, a shell, an interpreter, or arbitrary command arguments.
+
+### Alpine/OpenRC installation
+
+The installer creates `/etc/init.d/vps-agent`, runs the Agent as the dedicated
+`vps-agent` user, and enables it in the default runlevel:
+
+```bash
+rc-update add vps-agent default
+rc-service vps-agent start
+rc-service vps-agent status
+```
+
+The fixed Helper uses `rc-service` for `x-ui` and `warp-go`. Its finite WARP
+recovery watchdog does not require `systemd-run`; it uses the root-owned,
+identity-checked child process described above.
 
 ## Actions and state
 

@@ -1,5 +1,5 @@
-#!/usr/bin/env bash
-set -Eeuo pipefail
+#!/bin/sh
+set -eu
 
 readonly REPO="${VPS_TOOL_REPO:-wangxiangg1/vps-tool}"
 readonly VERSION="${VPS_TOOL_VERSION:-latest}"
@@ -8,27 +8,75 @@ readonly STATE_ROOT="/var/lib/vps-agent"
 readonly BIN_PATH="/usr/local/bin/vps-agent"
 readonly HELPER_PATH="/usr/local/libexec/vps-agent-helper"
 readonly SERVICE_PATH="/etc/systemd/system/vps-agent.service"
+readonly OPENRC_SERVICE_PATH="/etc/init.d/vps-agent"
 readonly SUDOERS_PATH="/etc/sudoers.d/vps-agent-helper"
+readonly DOAS_POLICY_PATH="/etc/doas.d/vps-agent.conf"
 readonly USER_NAME="vps-agent"
 readonly GROUP_NAME="vps-agent"
 RESOLVED_VERSION=""
+INIT_SYSTEM=""
+PRIVILEGE_TOOL=""
 
 log() { printf '[vps-tool] %s\n' "$*"; }
 die() { printf '[vps-tool] error: %s\n' "$*" >&2; exit 1; }
 
 cleanup() {
-  if [[ -n "${TMP_DIR:-}" && -d "$TMP_DIR" ]]; then
+  if [ -n "${TMP_DIR:-}" ] && [ -d "$TMP_DIR" ]; then
     rm -rf -- "$TMP_DIR"
   fi
 }
-trap cleanup EXIT
+trap cleanup 0
 
 require_root() {
-  [[ "$(id -u)" -eq 0 ]] || die "run this installer as root"
+  [ "$(id -u)" -eq 0 ] || die "run this installer as root"
 }
 
 require_command() {
   command -v "$1" >/dev/null 2>&1 || die "required command is missing: $1"
+}
+
+detect_init_system() {
+  if [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1; then
+    INIT_SYSTEM="systemd"
+    return
+  fi
+  if command -v rc-service >/dev/null 2>&1 && [ -d /etc/init.d ]; then
+    INIT_SYSTEM="openrc"
+    return
+  fi
+  die "systemd or OpenRC is required for vps-agent"
+}
+
+ensure_alpine_dependencies() {
+  if [ "$INIT_SYSTEM" != "openrc" ] || [ ! -f /etc/alpine-release ]; then
+    return
+  fi
+  require_command apk
+  missing=""
+  command -v curl >/dev/null 2>&1 || missing="$missing curl"
+  if { ! command -v sudo >/dev/null 2>&1 || ! command -v visudo >/dev/null 2>&1; } &&
+    ! command -v doas >/dev/null 2>&1; then
+    missing="$missing doas"
+  fi
+  command -v install >/dev/null 2>&1 || missing="$missing coreutils"
+  [ -f /etc/ssl/certs/ca-certificates.crt ] || missing="$missing ca-certificates"
+  if [ -n "$missing" ]; then
+    # Alpine's base image commonly lacks curl, privilege escalation, and a CA bundle.
+    # Install only the small packages needed by the installer and WSS client.
+    apk add --no-cache $missing
+  fi
+}
+
+select_privilege_tool() {
+  if command -v sudo >/dev/null 2>&1 && command -v visudo >/dev/null 2>&1; then
+    PRIVILEGE_TOOL="sudo"
+    return
+  fi
+  if [ "$INIT_SYSTEM" = "openrc" ] && command -v doas >/dev/null 2>&1; then
+    PRIVILEGE_TOOL="doas"
+    return
+  fi
+  die "sudo with visudo, or doas on Alpine/OpenRC, is required"
 }
 
 detect_arch() {
@@ -40,7 +88,7 @@ detect_arch() {
 }
 
 resolve_version() {
-  if [[ "$VERSION" != "latest" ]]; then
+  if [ "$VERSION" != "latest" ]; then
     printf '%s\n' "$VERSION"
     return
   fi
@@ -60,22 +108,35 @@ download_asset() {
 }
 
 ensure_identity() {
-  if ! getent group "$GROUP_NAME" >/dev/null; then
-    groupadd --system "$GROUP_NAME"
+  if command -v getent >/dev/null 2>&1; then
+    group_exists="getent group $GROUP_NAME"
+  else
+    group_exists="grep -q ^$GROUP_NAME: /etc/group"
+  fi
+  if ! sh -c "$group_exists" >/dev/null 2>&1; then
+    if [ "$INIT_SYSTEM" = "openrc" ]; then
+      addgroup -S "$GROUP_NAME"
+    else
+      groupadd --system "$GROUP_NAME"
+    fi
   fi
   if ! id -u "$USER_NAME" >/dev/null 2>&1; then
-    useradd --system --gid "$GROUP_NAME" --home-dir "$STATE_ROOT" --shell /usr/sbin/nologin "$USER_NAME"
+    if [ "$INIT_SYSTEM" = "openrc" ]; then
+      adduser -S -D -H -h "$STATE_ROOT" -s /sbin/nologin -G "$GROUP_NAME" "$USER_NAME"
+    else
+      useradd --system --gid "$GROUP_NAME" --home-dir "$STATE_ROOT" --shell /usr/sbin/nologin "$USER_NAME"
+    fi
   fi
 }
 
 validate_config() {
   local config_path="$INSTALL_ROOT/agent.json"
-  if [[ ! -f "$config_path" ]]; then
-    [[ -n "${VPS_AGENT_NODE_ID:-}" ]] || die "missing config; set VPS_AGENT_NODE_ID, VPS_AGENT_REGISTRATION_TOKEN, VPS_AGENT_WSS_URL and VPS_AGENT_XUI_UNIT"
-    [[ -n "${VPS_AGENT_REGISTRATION_TOKEN:-}" || -n "${VPS_AGENT_CREDENTIAL:-}" ]] || die "set VPS_AGENT_REGISTRATION_TOKEN for first enrollment or VPS_AGENT_CREDENTIAL for an existing node"
-    [[ -n "${VPS_AGENT_WSS_URL:-}" ]] || die "set VPS_AGENT_WSS_URL to a wss:// endpoint"
-    [[ "$VPS_AGENT_WSS_URL" == wss://* ]] || die "VPS_AGENT_WSS_URL must use wss://"
-    [[ -n "${VPS_AGENT_XUI_UNIT:-}" ]] || die "set VPS_AGENT_XUI_UNIT"
+  if [ ! -f "$config_path" ]; then
+    [ -n "${VPS_AGENT_NODE_ID:-}" ] || die "missing config; set VPS_AGENT_NODE_ID, VPS_AGENT_REGISTRATION_TOKEN, VPS_AGENT_WSS_URL and VPS_AGENT_XUI_UNIT"
+    [ -n "${VPS_AGENT_REGISTRATION_TOKEN:-}" ] || [ -n "${VPS_AGENT_CREDENTIAL:-}" ] || die "set VPS_AGENT_REGISTRATION_TOKEN for first enrollment or VPS_AGENT_CREDENTIAL for an existing node"
+    [ -n "${VPS_AGENT_WSS_URL:-}" ] || die "set VPS_AGENT_WSS_URL to a wss:// endpoint"
+    case "$VPS_AGENT_WSS_URL" in wss://*) ;; *) die "VPS_AGENT_WSS_URL must use wss://" ;; esac
+    [ -n "${VPS_AGENT_XUI_UNIT:-}" ] || die "set VPS_AGENT_XUI_UNIT"
     local adapter="${VPS_AGENT_WARP_ADAPTER:-generic}"
     case "$adapter" in generic|fixed-helper|warp-cli|wgcf|warp-go) ;; *) die "unsupported VPS_AGENT_WARP_ADAPTER: $adapter" ;; esac
     write_initial_config "$config_path" "$adapter"
@@ -113,12 +174,17 @@ EOF
 
 json_escape() {
   local value="$1"
-  value=${value//\\/\\\\}
-  value=${value//"/\\"}
-  value=${value//$'\n'/\\n}
-  value=${value//$'\r'/\\r}
-  value=${value//$'\t'/\\t}
-  printf '%s' "$value"
+  local newline carriage tab
+  newline=$(printf '\nx')
+  newline=${newline%x}
+  carriage=$(printf '\rx')
+  carriage=${carriage%x}
+  tab=$(printf '\tx')
+  tab=${tab%x}
+  case "$value" in
+    *"$newline"*|*"$carriage"*|*"$tab"*) die "configuration values must not contain newline, carriage return, or tab" ;;
+  esac
+  printf '%s' "$value" | sed 's/\\/\\\\/g; s/"/\\"/g'
 }
 
 install_files() {
@@ -129,6 +195,18 @@ install_files() {
 }
 
 install_policy() {
+  if [ "$PRIVILEGE_TOOL" = "doas" ]; then
+    local policy_path="$TMP_DIR/vps-agent-helper.doas"
+    cat >"$policy_path" <<EOF
+# Managed by vps-tool installer. The agent can invoke only this fixed helper.
+permit nopass ${USER_NAME} as root cmd ${HELPER_PATH}
+EOF
+    chmod 0600 "$policy_path"
+    doas -C "$policy_path" >/dev/null || die "generated doas policy failed validation"
+    install -d -o root -g root -m 0755 /etc/doas.d
+    install -o root -g root -m 0600 "$policy_path" "$DOAS_POLICY_PATH"
+    return
+  fi
   local policy_path="$TMP_DIR/vps-agent-helper.sudoers"
   cat >"$policy_path" <<EOF
 # Managed by vps-tool installer. The agent can invoke only this fixed helper.
@@ -140,6 +218,27 @@ EOF
 }
 
 install_service() {
+  if [ "$INIT_SYSTEM" = "openrc" ]; then
+    cat >"$OPENRC_SERVICE_PATH" <<EOF
+#!/sbin/openrc-run
+
+name="vps-tool low-resource agent"
+command="${BIN_PATH}"
+command_args="-config ${INSTALL_ROOT}/agent.json"
+command_user="${USER_NAME}:${GROUP_NAME}"
+supervisor="supervise-daemon"
+respawn_delay=5
+respawn_max=0
+
+depend() {
+  need net
+  after firewall
+}
+EOF
+    chmod 0755 "$OPENRC_SERVICE_PATH"
+    chown root:root "$OPENRC_SERVICE_PATH"
+    return
+  fi
   cat >"$SERVICE_PATH" <<EOF
 [Unit]
 Description=vps-tool low-resource agent
@@ -172,39 +271,69 @@ EOF
 
 main() {
   require_root
+  detect_init_system
+  ensure_alpine_dependencies
+  select_privilege_tool
   require_command curl
   require_command install
-  require_command systemctl
-  require_command sudo
-  require_command visudo
-  require_command getent
   require_command sha256sum
-  require_command groupadd
-  require_command useradd
-  [[ -d /run/systemd/system ]] || die "systemd is required for vps-agent.service"
+  if [ "$PRIVILEGE_TOOL" = "doas" ]; then
+    require_command doas
+  else
+    require_command sudo
+    require_command visudo
+  fi
+  if [ "$INIT_SYSTEM" = "openrc" ]; then
+    require_command addgroup
+    require_command adduser
+    require_command rc-service
+    require_command rc-update
+  else
+    require_command systemctl
+    require_command groupadd
+    require_command useradd
+  fi
   local arch version
   arch=$(detect_arch)
   version=$(resolve_version)
-  [[ "$version" =~ ^v[0-9] ]] || die "could not resolve a release tag; set VPS_TOOL_VERSION explicitly"
+  case "$version" in v[0-9]*) ;; *) die "could not resolve a release tag; set VPS_TOOL_VERSION explicitly" ;; esac
   RESOLVED_VERSION="$version"
   TMP_DIR=$(mktemp -d)
   log "installing ${REPO} ${version} for linux/${arch}"
   download_asset "$version" "vps-agent-linux-${arch}" "$TMP_DIR/vps-agent-linux-${arch}"
   download_asset "$version" "vps-agent-helper-linux-${arch}" "$TMP_DIR/vps-agent-helper-linux-${arch}"
   download_asset "$version" "SHA256SUMS" "$TMP_DIR/SHA256SUMS"
-  (cd "$TMP_DIR" && sha256sum --ignore-missing -c SHA256SUMS) || die "release checksum verification failed"
+  grep -E "  (vps-agent-linux-${arch}|vps-agent-helper-linux-${arch})$" "$TMP_DIR/SHA256SUMS" >"$TMP_DIR/CHECKSUMS"
+  [ "$(wc -l <"$TMP_DIR/CHECKSUMS" | tr -d ' ')" -eq 2 ] || die "release checksum list is missing Agent assets"
+  (cd "$TMP_DIR" && sha256sum -c CHECKSUMS) || die "release checksum verification failed"
   chmod 0755 "$TMP_DIR/vps-agent-linux-${arch}" "$TMP_DIR/vps-agent-helper-linux-${arch}"
   ensure_identity
   install -d -o "$USER_NAME" -g "$GROUP_NAME" -m 0700 "$INSTALL_ROOT"
   install -d -o "$USER_NAME" -g "$GROUP_NAME" -m 0700 "$STATE_ROOT"
   validate_config
+  if [ "$INIT_SYSTEM" = "openrc" ] && [ ! -c /dev/net/tun ]; then
+    log "warning: /dev/net/tun is unavailable; Agent enrollment can work, but WARP requires LXC TUN access and CAP_NET_ADMIN"
+  fi
   install_files "$arch"
   install_policy
   install_service
-  systemctl daemon-reload
-  systemctl enable --now vps-agent.service
-  systemctl is-active --quiet vps-agent.service || die "vps-agent.service did not become active"
-  log "installed and started vps-agent.service"
+  if [ "$INIT_SYSTEM" = "openrc" ]; then
+    rc-update add vps-agent default >/dev/null
+    if rc-service vps-agent status >/dev/null 2>&1; then
+      rc-service vps-agent restart
+    else
+      rc-service vps-agent start
+    fi
+    rc-service vps-agent status >/dev/null 2>&1 || die "vps-agent OpenRC service did not become active"
+    log "installed and started vps-agent through OpenRC"
+  else
+    systemctl daemon-reload
+    systemctl enable --now vps-agent.service
+    systemctl is-active --quiet vps-agent.service || die "vps-agent.service did not become active"
+    log "installed and started vps-agent.service"
+  fi
 }
 
-main "$@"
+if [ "${VPS_TOOL_INSTALLER_LIBRARY_ONLY:-0}" != "1" ]; then
+  main "$@"
+fi

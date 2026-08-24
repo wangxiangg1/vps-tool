@@ -18,6 +18,24 @@ jobs:
       - name: Validate Agent installer shell syntax
         run: bash -n install-agent.sh
 
+      - name: Validate Alpine and OpenRC installer path
+        run: |
+          docker run --rm --volume "$PWD:/src:ro" alpine:3.22 sh -ec '
+            apk add --no-cache openrc
+            sh -n /src/install-agent.sh
+            VPS_TOOL_INSTALLER_LIBRARY_ONLY=1 . /src/install-agent.sh
+            detect_init_system
+            test "$INIT_SYSTEM" = openrc
+            test "$(detect_arch)" = amd64
+            ensure_alpine_dependencies
+            select_privilege_tool
+            test "$PRIVILEGE_TOOL" = doas
+            ensure_identity
+            TMP_DIR="$(mktemp -d)"
+            install_policy
+            test -f /etc/doas.d/vps-agent.conf
+          '
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:

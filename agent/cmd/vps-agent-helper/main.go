@@ -18,8 +18,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"vps-tool/agent/internal/systemd"
 )
 
 const (
@@ -39,6 +37,9 @@ var programPaths = map[string][]string{
 	},
 	"systemctl": {
 		"/usr/bin/systemctl", "/bin/systemctl",
+	},
+	"rc-service": {
+		"/sbin/rc-service", "/usr/sbin/rc-service", "/usr/bin/rc-service", "/bin/rc-service",
 	},
 	"systemd-run": {
 		"/usr/bin/systemd-run", "/bin/systemd-run",
@@ -140,10 +141,14 @@ func dispatch(ctx context.Context, args []string) error {
 	case "watchdog":
 		return b.watchdog(ctx, args[1:])
 	case "watchdog-run":
-		if len(args) != 4 {
-			return errors.New("usage: watchdog-run <adapter> <token> <max-attempts>")
+		if len(args) != 4 && len(args) != 5 {
+			return errors.New("usage: watchdog-run <adapter> <token> <max-attempts> [deadline-unix]")
 		}
-		return b.watchdogRun(ctx, args[1], args[2], args[3])
+		deadline := ""
+		if len(args) == 5 {
+			deadline = args[4]
+		}
+		return b.watchdogRun(ctx, args[1], args[2], args[3], deadline)
 	default:
 		return fmt.Errorf("unsupported helper command %q", args[0])
 	}
@@ -192,7 +197,7 @@ func (b broker) autoBackend() (warpBackend, error) {
 	if _, err := findProgram("wg-quick"); err == nil && fileExists("/etc/wireguard/wgcf.conf") {
 		return wgcfBackend{}, nil
 	}
-	if serviceFileExists(warpGoUnit) {
+	if serviceExists(warpGoUnit) {
 		return warpGoBackend{}, nil
 	}
 	return nil, errors.New("no supported WARP backend was detected")
@@ -266,43 +271,27 @@ func (wgcfBackend) Off(ctx context.Context) error {
 type warpGoBackend struct{}
 
 func (warpGoBackend) Status(ctx context.Context) (string, error) {
-	return systemdWarpState(ctx, warpGoUnit)
+	return serviceUnitStateForWarp(ctx, warpGoUnit)
 }
 
 func (warpGoBackend) On(ctx context.Context) error {
-	result, err := runProgram(ctx, "systemctl", "start", warpGoUnit)
-	if err != nil {
-		return err
-	}
-	return requireSuccess(result, "systemctl start warp-go.service")
+	return serviceAction(ctx, warpGoUnit, "start")
 }
 
 func (warpGoBackend) Off(ctx context.Context) error {
-	result, err := runProgram(ctx, "systemctl", "stop", warpGoUnit)
-	if err != nil {
-		return err
-	}
-	return requireSuccess(result, "systemctl stop warp-go.service")
+	return serviceAction(ctx, warpGoUnit, "stop")
 }
 
 func (b broker) xui(ctx context.Context, rawUnit, operation string) error {
-	unit, err := systemd.NormalizeUnit(rawUnit)
-	if err != nil {
-		return err
-	}
 	switch operation {
 	case "status":
-		state, err := systemdServiceState(ctx, unit)
+		state, err := serviceUnitStateForXUI(ctx, rawUnit)
 		if err != nil {
 			return err
 		}
 		return writeJSON(xuiResponse{State: state})
 	case "restart":
-		result, err := runProgram(ctx, "systemctl", "restart", unit)
-		if err != nil {
-			return err
-		}
-		return requireSuccess(result, "systemctl restart "+unit)
+		return serviceAction(ctx, rawUnit, "restart")
 	default:
 		return fmt.Errorf("unsupported x-ui operation %q", operation)
 	}
@@ -336,6 +325,13 @@ func (b broker) armWatchdog(ctx context.Context, adapter, rawToken, rawDeadline,
 	if err != nil {
 		return err
 	}
+	manager, err := currentServiceManager()
+	if err != nil {
+		return err
+	}
+	if manager == managerOpenRC {
+		return b.armOpenRCWatchdog(adapter, token, attempts, rawDeadline)
+	}
 	deadline, _ := strconv.ParseInt(rawDeadline, 10, 64)
 	delay := deadline - time.Now().Unix()
 	unit := watchdogUnit(token)
@@ -362,6 +358,13 @@ func (b broker) disarmWatchdog(ctx context.Context, rawToken string) error {
 	if err != nil {
 		return err
 	}
+	manager, err := currentServiceManager()
+	if err != nil {
+		return err
+	}
+	if manager == managerOpenRC {
+		return disarmOpenRCWatchdog(token)
+	}
 	result, err := runProgram(ctx, "systemctl", "stop", watchdogUnit(token))
 	if err != nil {
 		return err
@@ -369,9 +372,20 @@ func (b broker) disarmWatchdog(ctx context.Context, rawToken string) error {
 	return requireSuccess(result, "systemctl stop watchdog")
 }
 
-func (b broker) watchdogRun(ctx context.Context, adapter, rawToken, rawAttempts string) error {
+func (b broker) watchdogRun(ctx context.Context, adapter, rawToken, rawAttempts, rawDeadline string) error {
 	if _, err := validateToken(rawToken); err != nil {
 		return err
+	}
+	defer removeOpenRCWatchdogPID(rawToken)
+	if rawDeadline != "" {
+		_, _, err := validateWatchdogInputs(rawToken, rawDeadline, rawAttempts)
+		if err != nil {
+			return err
+		}
+		deadline, _ := strconv.ParseInt(rawDeadline, 10, 64)
+		if err := sleepContext(ctx, time.Until(time.Unix(deadline, 0))); err != nil {
+			return err
+		}
 	}
 	attempts, err := strconv.Atoi(rawAttempts)
 	if err != nil || attempts < 1 || attempts > 3 {

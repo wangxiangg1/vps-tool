@@ -39,7 +39,7 @@ class NodeValidationError(ValueError):
 def validate_xui_service(value: str) -> str:
     if not XUI_SERVICE_RE.fullmatch(value):
         raise NodeValidationError(
-            "xui_service must be a systemd unit name without spaces, paths, or shell characters"
+            "xui_service must be a systemd unit or OpenRC service name without spaces, paths, or shell characters"
         )
     return value
 

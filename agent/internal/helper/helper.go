@@ -53,14 +53,14 @@ func (e *Error) Unwrap() error { return e.Err }
 func (e *Error) ErrorCode() string { return e.Code }
 
 type Runner struct {
-	Path    string
-	Adapter string
-	Unit    string
-	Timeout time.Duration
-	DryRun  bool
-	UseSudo bool
-	dry     *DryRun
-	dryMu   sync.Mutex
+	Path                   string
+	Adapter                string
+	Unit                   string
+	Timeout                time.Duration
+	DryRun                 bool
+	UsePrivilegeEscalation bool
+	dry                    *DryRun
+	dryMu                  sync.Mutex
 }
 
 type DryRun struct {
@@ -86,12 +86,12 @@ func NewRunner(path, adapter, unit string, dryRun bool) (*Runner, error) {
 		}
 	}
 	runner := &Runner{
-		Path:    path,
-		Adapter: adapter,
-		Unit:    unit,
-		Timeout: defaultHelperTimeout,
-		DryRun:  dryRun,
-		UseSudo: !dryRun,
+		Path:                   path,
+		Adapter:                adapter,
+		Unit:                   unit,
+		Timeout:                defaultHelperTimeout,
+		DryRun:                 dryRun,
+		UsePrivilegeEscalation: !dryRun,
 	}
 	if dryRun {
 		runner.dry = &DryRun{
@@ -270,13 +270,13 @@ func (r *Runner) callOutput(ctx context.Context, args []string) ([]byte, error) 
 	defer cancel()
 	commandPath := r.Path
 	commandArgs := args
-	if r.UseSudo {
-		sudoPath, err := findSudo()
+	if r.UsePrivilegeEscalation {
+		escalator, err := findPrivilegeEscalator()
 		if err != nil {
 			return nil, err
 		}
-		commandPath = sudoPath
-		commandArgs = append([]string{"-n", "--", r.Path}, args...)
+		commandPath = escalator.path
+		commandArgs = append(escalator.args(r.Path), args...)
 	}
 	command := exec.CommandContext(callCtx, commandPath, commandArgs...)
 	command.Stdin = nil
@@ -310,16 +310,46 @@ func (r *Runner) callOutput(ctx context.Context, args []string) ([]byte, error) 
 	return stdout.Bytes(), nil
 }
 
-func findSudo() (string, error) {
-	for _, candidate := range []string{"/usr/bin/sudo", "/bin/sudo"} {
+type privilegeEscalator struct {
+	path string
+	doas bool
+}
+
+func (p privilegeEscalator) args(helperPath string) []string {
+	if p.doas {
+		return []string{"-n", helperPath}
+	}
+	return []string{"-n", "--", helperPath}
+}
+
+func findPrivilegeEscalator() (privilegeEscalator, error) {
+	// The installer writes this root-owned rule only when it selected native
+	// doas. Prefer doas in that case so a separately installed sudo shim cannot
+	// change the command-line contract.
+	if _, err := os.Stat("/etc/doas.d/vps-agent.conf"); err == nil {
+		if escalator, ok := findEscalator([]string{"/usr/bin/doas", "/bin/doas"}, true); ok {
+			return escalator, nil
+		}
+	}
+	if escalator, ok := findEscalator([]string{"/usr/bin/sudo", "/bin/sudo"}, false); ok {
+		return escalator, nil
+	}
+	if escalator, ok := findEscalator([]string{"/usr/bin/doas", "/bin/doas"}, true); ok {
+		return escalator, nil
+	}
+	return privilegeEscalator{}, &Error{Code: "helper_not_found", Message: "sudo or doas was not found or is not safely installed"}
+}
+
+func findEscalator(candidates []string, doas bool) (privilegeEscalator, bool) {
+	for _, candidate := range candidates {
 		if _, err := os.Stat(candidate); err != nil {
 			continue
 		}
 		if err := validateExecutable(candidate); err == nil {
-			return candidate, nil
+			return privilegeEscalator{path: candidate, doas: doas}, true
 		}
 	}
-	return "", &Error{Code: "helper_not_found", Message: "sudo was not found or is not safely installed"}
+	return privilegeEscalator{}, false
 }
 
 func validateExecutable(path string) error {

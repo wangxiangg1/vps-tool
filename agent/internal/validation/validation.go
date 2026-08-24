@@ -20,12 +20,12 @@ func NodeID(value string) error {
 	return nil
 }
 
-// UnitName accepts a single systemd unit token. It deliberately excludes
-// paths, whitespace and option-like values so it can never become a command
-// line fragment.
+// UnitName accepts one systemd unit or OpenRC service token. It deliberately
+// excludes paths, whitespace and option-like values so it can never become a
+// command line fragment.
 func UnitName(value string) error {
 	if !unitPattern.MatchString(value) || strings.ContainsAny(value, `/\\`) || strings.Contains(value, "..") {
-		return fmt.Errorf("invalid systemd unit name")
+		return fmt.Errorf("invalid service name")
 	}
 	return nil
 }
