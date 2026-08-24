@@ -82,3 +82,16 @@ func TestResultLoopRequeuesWhenConnectionFails(t *testing.T) {
 		t.Fatal("failed result was not requeued")
 	}
 }
+
+func TestRequiresSessionReconnect(t *testing.T) {
+	for _, actionName := range []string{"change_ip", "warp_on", "warp_off"} {
+		if !requiresSessionReconnect(actionName) {
+			t.Fatalf("requiresSessionReconnect(%q) = false, want true", actionName)
+		}
+	}
+	for _, actionName := range []string{"get_status", "get_ip", "restart_xui"} {
+		if requiresSessionReconnect(actionName) {
+			t.Fatalf("requiresSessionReconnect(%q) = true, want false", actionName)
+		}
+	}
+}

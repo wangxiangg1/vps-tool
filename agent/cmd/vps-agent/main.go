@@ -174,7 +174,7 @@ func runConnectionWithResultQueue(ctx context.Context, cfg *config.Config, confi
 	group.Add(4)
 	go func() {
 		defer group.Done()
-		errorsCh <- readLoop(connectionCtx, conn, *cfg, executor, resultCh)
+		errorsCh <- readLoop(connectionCtx, conn, *cfg, executor, resultCh, cancel)
 	}()
 	go func() {
 		defer group.Done()
@@ -225,7 +225,7 @@ func waitForAuthentication(ctx context.Context, conn wsclient.Conn) (string, err
 	return issuedCredential, nil
 }
 
-func readLoop(ctx context.Context, conn wsclient.Conn, cfg config.Config, executor *action.Executor, resultCh chan<- action.Result) error {
+func readLoop(ctx context.Context, conn wsclient.Conn, cfg config.Config, executor *action.Executor, resultCh chan<- action.Result, reconnect context.CancelFunc) error {
 	for {
 		raw, err := conn.ReadMessage(ctx)
 		if err != nil {
@@ -243,14 +243,14 @@ func readLoop(ctx context.Context, conn wsclient.Conn, cfg config.Config, execut
 			if err != nil {
 				return sendCommandRejection(ctx, conn, "", err, "invalid_parameters")
 			}
-			go handleCommand(ctx, conn, cfg, executor, resultCh, command)
+			go handleCommand(ctx, conn, cfg, executor, resultCh, reconnect, command)
 		default:
 			return fmt.Errorf("unsupported server message type %q", envelope.MessageType)
 		}
 	}
 }
 
-func handleCommand(ctx context.Context, conn wsclient.Conn, cfg config.Config, executor *action.Executor, resultCh chan<- action.Result, command protocol.Command) {
+func handleCommand(ctx context.Context, conn wsclient.Conn, cfg config.Config, executor *action.Executor, resultCh chan<- action.Result, reconnect context.CancelFunc, command protocol.Command) {
 	if err := protocol.ValidateCommand(command, cfg.NodeID, time.Now().UTC()); err != nil {
 		_ = sendCommandRejection(ctx, conn, command.RequestID, err, validationCode(err))
 		return
@@ -267,6 +267,21 @@ func handleCommand(ctx context.Context, conn wsclient.Conn, cfg config.Config, e
 	// is canceled as soon as the WSS connection drops.
 	result := executor.Execute(context.Background(), command)
 	queueResult(resultCh, result)
+	if requiresSessionReconnect(command.Action) && reconnect != nil {
+		// WARP route changes can leave the old TCP socket half-open for many
+		// minutes. Force a new WSS dial on the new route after the durable result
+		// has been recorded instead of waiting for the kernel TCP timeout.
+		reconnect()
+	}
+}
+
+func requiresSessionReconnect(actionName string) bool {
+	switch actionName {
+	case "change_ip", "warp_on", "warp_off":
+		return true
+	default:
+		return false
+	}
 }
 
 func resultLoop(ctx context.Context, conn wsclient.Conn, resultCh chan action.Result) error {
