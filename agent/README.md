@@ -57,8 +57,15 @@ backend starts with WARP ON and cycles through two documentation IPs.
 
 The public release includes `vps-agent`, the fixed root Helper, an installer,
 and `SHA256SUMS` for both Linux architectures. Create a node in the control
-plane first, then export the one-time registration values and run the installer
-as root:
+plane first. The control plane's one-time-token dialog now generates a complete
+copyable install command containing the node ID, WSS endpoint, service settings,
+and one-time token. Run that command in a root shell on the target VPS; it
+downloads the release installer and starts enrollment without manually copying
+several environment variables. The token is intentionally visible in the
+command and expires after the enrollment window.
+
+For manual or automated installation, export the one-time registration values
+and run the installer as root:
 
 ```bash
 export VPS_AGENT_NODE_ID="node-id-from-the-control-plane"

@@ -3287,6 +3287,18 @@ textarea:focus-visible {
   font-size: 11px;
 }
 
+.install-command-readout {
+  align-items: flex-start;
+  margin-top: 12px;
+}
+
+.install-command-readout code {
+  max-height: 230px;
+  overflow: auto;
+  white-space: pre-wrap;
+  line-height: 1.55;
+}
+
 .toast {
   display: flex;
   align-items: center;

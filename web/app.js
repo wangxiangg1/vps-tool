@@ -11,6 +11,35 @@
   const escapeHtml = (value) => text(value, "").replace(/[&<>"']/g, (char) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
   })[char]);
+  const shellQuote = (value) => `'${String(value ?? "").replace(/'/g, "'\\''")}'`;
+  const agentWssUrl = () => `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/agent`;
+  const buildAgentInstallCommand = (node, registrationToken) => {
+    const assignments = [
+      `VPS_AGENT_NODE_ID=${shellQuote(node.id)}`,
+      `VPS_AGENT_REGISTRATION_TOKEN=${shellQuote(registrationToken)}`,
+      `VPS_AGENT_WSS_URL=${shellQuote(agentWssUrl())}`,
+      `VPS_AGENT_XUI_UNIT=${shellQuote(node.xui_service || "x-ui")}`,
+      `VPS_AGENT_WARP_ADAPTER=${shellQuote(node.warp_adapter || "generic")}`,
+    ].join(" \\\n");
+    const bootstrap = [
+      "set -eu",
+      "installer_url=\"https://github.com/wangxiangg1/vps-tool/releases/latest/download/install-agent.sh\"",
+      "tmp=\"/tmp/vps-tool-install.sh\"",
+      "if command -v curl >/dev/null 2>&1; then",
+      "  curl --fail --silent --show-error --location \"$installer_url\" -o \"$tmp\"",
+      "else",
+      "  wget -qO \"$tmp\" \"$installer_url\"",
+      "fi",
+      "chmod 0755 \"$tmp\"",
+      "if [ \"$(id -u)\" -eq 0 ]; then",
+      "  /bin/sh \"$tmp\"",
+      "else",
+      "  sudo --preserve-env=VPS_AGENT_NODE_ID,VPS_AGENT_REGISTRATION_TOKEN,VPS_AGENT_WSS_URL,VPS_AGENT_XUI_UNIT,VPS_AGENT_WARP_ADAPTER /bin/sh \"$tmp\"",
+      "fi",
+      "rm -f \"$tmp\"",
+    ].join("\n");
+    return `${assignments} \\\nsh -c ${shellQuote(bootstrap)}`;
+  };
   const actionLabels = {
     get_status: "刷新状态", get_ip: "获取出口 IP", warp_on: "开启 WARP",
     warp_off: "关闭 WARP", change_ip: "切换出口 IP", restart_xui: "重启 3x-ui",
@@ -557,12 +586,16 @@
     event.preventDefault(); $("createNodeSubmit").disabled = true; $("nodeFormMessage").textContent = "正在创建节点……";
     try {
       const response = await api("/api/nodes", { method: "POST", body: { name: $("nodeName").value.trim(), region: $("nodeRegion").value.trim(), tags: $("nodeTags").value.split(",").map((tag) => tag.trim()).filter(Boolean), warp_adapter: $("nodeWarpAdapter").value, xui_service: $("nodeXuiService").value.trim(), notes: $("nodeNotes").value.trim() } });
-      closeDialog("nodeDialog"); $("registrationToken").textContent = response.registration_token; $("tokenExpiry").textContent = `有效期至：${formatTime(response.registration_token_expires_at, true)}`; openDialog("tokenDialog"); await refreshData(false);
+      closeDialog("nodeDialog"); $("registrationToken").textContent = response.registration_token; $("tokenExpiry").textContent = `有效期至：${formatTime(response.registration_token_expires_at, true)}`; $("agentInstallCommand").textContent = buildAgentInstallCommand(response.node, response.registration_token); openDialog("tokenDialog"); await refreshData(false);
     } catch (error) { $("nodeFormMessage").textContent = error.message; } finally { $("createNodeSubmit").disabled = false; }
   });
   $("copyTokenButton").addEventListener("click", async () => {
     try { await navigator.clipboard.writeText($("registrationToken").textContent); notify("注册 Token 已复制"); }
     catch (_) { notify("复制失败，请手动选择 Token。", "error"); }
+  });
+  $("copyInstallCommandButton").addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText($("agentInstallCommand").textContent); notify("Agent 安装命令已复制"); }
+    catch (_) { notify("复制失败，请手动选择安装命令。", "error"); }
   });
 
   $("newTaskButton").addEventListener("click", openTaskForm);
