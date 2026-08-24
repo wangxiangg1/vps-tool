@@ -4,7 +4,7 @@
   const state = {
     csrfToken: "", user: null, nodes: [], actions: [], tasks: [],
     selected: new Set(), busy: new Set(), activeView: "nodes",
-    activeNodeId: "", confirmAction: null,
+    activeNodeId: "", confirmAction: null, nodeFormMode: "create", editingNodeId: "",
   };
   const $ = (id) => document.getElementById(id);
   const text = (value, fallback = "—") => value === null || value === undefined || value === "" ? fallback : String(value);
@@ -324,7 +324,7 @@
     const warpAction = statusValue(node, "warp_status") === "on" ? "warp_off" : "warp_on";
     const actions = ["change_ip", warpAction, "restart_xui", "get_status", "get_ip"];
     $("detailContent").innerHTML = `
-      <section class="detail-hero"><div class="detail-identity"><span class="detail-node-icon"><span class="material-symbols-outlined" aria-hidden="true">dns</span><i class="${node.online ? "is-online" : ""}"></i></span><div><div class="detail-title-line"><h2>${escapeHtml(node.name)}</h2>${badge(nodeStatus(node))}</div><div class="detail-id">ID: ${escapeHtml(node.id)}</div></div></div><button class="button button-quiet" data-action="get_status" data-node-id="${escapeHtml(node.id)}" type="button"${!node.online || state.busy.has(node.id) ? " disabled" : ""}><span class="button-icon material-symbols-outlined" aria-hidden="true">sync</span>同步状态</button></section>
+      <section class="detail-hero"><div class="detail-identity"><span class="detail-node-icon"><span class="material-symbols-outlined" aria-hidden="true">dns</span><i class="${node.online ? "is-online" : ""}"></i></span><div><div class="detail-title-line"><h2>${escapeHtml(node.name)}</h2>${badge(nodeStatus(node))}</div><div class="detail-id">ID: ${escapeHtml(node.id)}</div></div></div><div class="detail-hero-actions"><button class="button button-quiet button-small" data-edit-node="${escapeHtml(node.id)}" type="button"><span class="button-icon material-symbols-outlined" aria-hidden="true">edit</span>编辑节点</button><button class="button button-quiet" data-action="get_status" data-node-id="${escapeHtml(node.id)}" type="button"${!node.online || state.busy.has(node.id) ? " disabled" : ""}><span class="button-icon material-symbols-outlined" aria-hidden="true">sync</span>同步状态</button></div></section>
       <div class="detail-layout"><div class="detail-primary">
         <section class="detail-metric-grid"><div class="metric-card"><div class="metric-card-heading"><span><span class="material-symbols-outlined" aria-hidden="true">memory</span>CPU 使用率</span><strong>${cpu.toFixed(1)}%</strong></div><span class="metric-track"><i style="width:${cpu}%"></i></span></div><div class="metric-card"><div class="metric-card-heading"><span><span class="material-symbols-outlined" aria-hidden="true">developer_board</span>内存使用</span><strong>${formatBytes(memoryUsed)} / ${formatBytes(memoryTotal)}</strong></div><span class="metric-track is-blue"><i style="width:${memoryPercent}%"></i></span></div><div class="metric-card"><div class="metric-card-heading"><span><span class="material-symbols-outlined" aria-hidden="true">hard_drive</span>根分区</span><strong>${diskPercent}%</strong></div><span class="metric-track is-tertiary"><i style="width:${diskPercent}%"></i></span></div></section>
         <section class="detail-panel node-information"><div class="detail-section-heading"><h3>节点信息</h3><div class="detail-section-actions"><button class="button button-quiet button-small" type="button" data-enroll-node="${escapeHtml(node.id)}"><span class="button-icon material-symbols-outlined" aria-hidden="true">terminal</span>生成安装命令</button><span class="table-meta">最后更新：${escapeHtml(relativeTime(node.last_seen_at))}</span></div></div><dl><div><dt>公共 IPv4</dt><dd>${escapeHtml(node.public_ipv4 || "未采集")}</dd></div><div><dt>公共 IPv6</dt><dd>${escapeHtml(node.public_ipv6 || "未采集")}</dd></div><div><dt>Agent 版本</dt><dd>${escapeHtml(node.agent_version || "—")}</dd></div><div><dt>系统 / 架构</dt><dd>${escapeHtml(`${node.os_name || "—"} ${node.os_version || ""} / ${node.architecture || "—"}`)}</dd></div><div><dt>WARP 接口</dt><dd>${badge(statusValue(node, "warp_status"))}</dd></div><div><dt>3x-ui 服务</dt><dd>${badge(statusValue(node, "xui_status"))} ${escapeHtml(node.xui_service || "x-ui")}</dd></div><div><dt>运行时间</dt><dd>${escapeHtml(formatUptime(node.uptime_seconds))}</dd></div><div><dt>地区</dt><dd>${escapeHtml(node.region || "未设置")}</dd></div></dl></section>
@@ -535,6 +535,12 @@
     }, { title: "批量操作", proceed: "开始批量执行" });
   });
   $("detailContent").addEventListener("click", (event) => {
+    const edit = event.target.closest("[data-edit-node]");
+    if (edit) {
+      const node = state.nodes.find((item) => item.id === edit.dataset.editNode);
+      if (node) openNodeEditor(node);
+      return;
+    }
     const enroll = event.target.closest("[data-enroll-node]");
     if (enroll) {
       const node = state.nodes.find((item) => item.id === enroll.dataset.enrollNode);
@@ -581,13 +587,36 @@
     }, { title: "删除任务", proceed: "删除任务" });
   });
 
-  $("addNodeButton").addEventListener("click", () => { $("nodeForm").reset(); $("nodeXuiService").value = "x-ui"; $("nodeFormMessage").textContent = ""; openDialog("nodeDialog"); });
+  $("addNodeButton").addEventListener("click", () => {
+    state.nodeFormMode = "create"; state.editingNodeId = "";
+    $("nodeForm").reset(); $("nodeXuiService").value = "x-ui";
+    $("nodeDialogTitle").textContent = "添加节点"; $("nodeDialogKicker").textContent = "FLEET / ENROLLMENT";
+    $("nodeDialogMessage").textContent = "创建后会生成一个短时有效、仅显示一次的注册 Token。";
+    $("nodeFormSubmit").textContent = "创建并生成 Token"; $("nodeFormMessage").textContent = "";
+    openDialog("nodeDialog");
+  });
+  function openNodeEditor(node) {
+    state.nodeFormMode = "edit"; state.editingNodeId = node.id;
+    $("nodeName").value = node.name || ""; $("nodeRegion").value = node.region || "";
+    $("nodeTags").value = (node.tags || []).join(", "); $("nodeWarpAdapter").value = node.warp_adapter || "generic";
+    $("nodeXuiService").value = node.xui_service || "x-ui"; $("nodeNotes").value = node.notes || "";
+    $("nodeDialogTitle").textContent = "编辑节点"; $("nodeDialogKicker").textContent = "NODE / SETTINGS";
+    $("nodeDialogMessage").textContent = "修改节点信息不会更换 Agent 凭据或注册 Token。";
+    $("nodeFormSubmit").textContent = "保存修改"; $("nodeFormMessage").textContent = "";
+    openDialog("nodeDialog");
+  }
   $("nodeForm").addEventListener("submit", async (event) => {
-    event.preventDefault(); $("createNodeSubmit").disabled = true; $("nodeFormMessage").textContent = "正在创建节点……";
+    event.preventDefault(); $("nodeFormSubmit").disabled = true; $("nodeFormMessage").textContent = state.nodeFormMode === "edit" ? "正在保存修改……" : "正在创建节点……";
     try {
-      const response = await api("/api/nodes", { method: "POST", body: { name: $("nodeName").value.trim(), region: $("nodeRegion").value.trim(), tags: $("nodeTags").value.split(",").map((tag) => tag.trim()).filter(Boolean), warp_adapter: $("nodeWarpAdapter").value, xui_service: $("nodeXuiService").value.trim(), notes: $("nodeNotes").value.trim() } });
-      closeDialog("nodeDialog"); $("registrationToken").textContent = response.registration_token; $("tokenExpiry").textContent = `有效期至：${formatTime(response.registration_token_expires_at, true)}`; $("agentInstallCommand").textContent = buildAgentInstallCommand(response.node, response.registration_token); openDialog("tokenDialog"); await refreshData(false);
-    } catch (error) { $("nodeFormMessage").textContent = error.message; } finally { $("createNodeSubmit").disabled = false; }
+      const body = { name: $("nodeName").value.trim(), region: $("nodeRegion").value.trim(), tags: $("nodeTags").value.split(",").map((tag) => tag.trim()).filter(Boolean), warp_adapter: $("nodeWarpAdapter").value, xui_service: $("nodeXuiService").value.trim(), notes: $("nodeNotes").value.trim() };
+      if (state.nodeFormMode === "edit") {
+        await api(`/api/nodes/${encodeURIComponent(state.editingNodeId)}`, { method: "PATCH", body });
+        closeDialog("nodeDialog"); notify("节点信息已更新"); await refreshData(false);
+      } else {
+        const response = await api("/api/nodes", { method: "POST", body });
+        closeDialog("nodeDialog"); $("registrationToken").textContent = response.registration_token; $("tokenExpiry").textContent = `有效期至：${formatTime(response.registration_token_expires_at, true)}`; $("agentInstallCommand").textContent = buildAgentInstallCommand(response.node, response.registration_token); openDialog("tokenDialog"); await refreshData(false);
+      }
+    } catch (error) { $("nodeFormMessage").textContent = error.message; } finally { $("nodeFormSubmit").disabled = false; }
   });
   $("copyTokenButton").addEventListener("click", async () => {
     try { await navigator.clipboard.writeText($("registrationToken").textContent); notify("注册 Token 已复制"); }

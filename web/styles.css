@@ -2571,6 +2571,14 @@ textarea:focus-visible {
   border-radius: var(--radius-md);
 }
 
+.detail-hero-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .detail-identity,
 .detail-title-line {
   display: flex;
@@ -3392,7 +3400,11 @@ textarea:focus-visible {
     padding: 18px;
   }
 
-  .detail-hero > .button {
+  .detail-hero-actions {
+    width: 100%;
+  }
+
+  .detail-hero-actions .button {
     width: 100%;
   }
 

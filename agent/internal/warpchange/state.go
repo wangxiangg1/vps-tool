@@ -20,7 +20,7 @@ type Ops interface {
 	WarpStatus(context.Context) (model.WarpSnapshot, error)
 	WarpOn(context.Context) error
 	WarpOff(context.Context) error
-	GetIP(context.Context) (string, error)
+	GetIPs(context.Context) (model.IPSnapshot, error)
 }
 
 type Watchdog interface {
@@ -212,7 +212,14 @@ func (m *Machine) step(ctx context.Context, operation func(context.Context) erro
 func (m *Machine) withIP(ctx context.Context) (string, error) {
 	stepCtx, cancel := m.stepContext(ctx)
 	defer cancel()
-	return m.Ops.GetIP(stepCtx)
+	ips, err := m.Ops.GetIPs(stepCtx)
+	if err != nil {
+		return "", err
+	}
+	if ips.IPv6 != "" {
+		return ips.IPv6, nil
+	}
+	return ips.IPv4, nil
 }
 
 func (m *Machine) currentState(ctx context.Context) (model.WarpSnapshot, error) {

@@ -48,15 +48,15 @@ func (f *fakeOps) WarpOff(context.Context) error {
 	return nil
 }
 
-func (f *fakeOps) GetIP(context.Context) (string, error) {
+func (f *fakeOps) GetIPs(context.Context) (model.IPSnapshot, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if len(f.ipQueue) == 0 {
-		return "", errors.New("no fake IP available")
+		return model.IPSnapshot{}, errors.New("no fake IP available")
 	}
 	ip := f.ipQueue[0]
 	f.ipQueue = f.ipQueue[1:]
-	return ip, nil
+	return model.IPSnapshot{IPv6: ip}, nil
 }
 
 type fakeWatchdog struct {

@@ -316,8 +316,8 @@
 
       <dialog id="nodeDialog" class="form-dialog" aria-labelledby="nodeDialogTitle">
         <form id="nodeForm">
-          <div class="form-dialog-header"><div><span class="section-kicker">FLEET / ENROLLMENT</span><h2 id="nodeDialogTitle">添加节点</h2></div><button class="icon-button" type="button" data-close-dialog="nodeDialog" aria-label="关闭"><span class="material-symbols-outlined" aria-hidden="true">close</span></button></div>
-          <p class="dialog-message">创建后会生成一个短时有效、仅显示一次的注册 Token。</p>
+          <div class="form-dialog-header"><div><span id="nodeDialogKicker" class="section-kicker">FLEET / ENROLLMENT</span><h2 id="nodeDialogTitle">添加节点</h2></div><button class="icon-button" type="button" data-close-dialog="nodeDialog" aria-label="关闭"><span class="material-symbols-outlined" aria-hidden="true">close</span></button></div>
+          <p id="nodeDialogMessage" class="dialog-message">创建后会生成一个短时有效、仅显示一次的注册 Token。</p>
           <div class="dialog-form-grid">
             <label class="form-field"><span>节点名称</span><input id="nodeName" name="name" required maxlength="100" placeholder="例如 Tokyo Edge 01"></label>
             <label class="form-field"><span>地区</span><input id="nodeRegion" name="region" maxlength="100" placeholder="例如 Tokyo / JP"></label>
@@ -327,7 +327,7 @@
             <label class="form-field form-field-wide"><span>备注</span><textarea id="nodeNotes" name="notes" rows="3" maxlength="2000"></textarea></label>
           </div>
           <p id="nodeFormMessage" class="form-message" role="alert"></p>
-          <div class="dialog-actions"><button class="button button-quiet" type="button" data-close-dialog="nodeDialog">取消</button><button id="createNodeSubmit" class="button button-primary" type="submit">创建并生成 Token</button></div>
+          <div class="dialog-actions"><button class="button button-quiet" type="button" data-close-dialog="nodeDialog">取消</button><button id="nodeFormSubmit" class="button button-primary" type="submit">创建并生成 Token</button></div>
         </form>
       </dialog>
 

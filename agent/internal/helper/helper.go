@@ -141,26 +141,35 @@ func (r *Runner) WarpOff(ctx context.Context) error {
 }
 
 func (r *Runner) GetIP(ctx context.Context) (string, error) {
+	ips, err := r.GetIPs(ctx)
+	if err != nil {
+		return "", err
+	}
+	if ips.IPv4 == "" {
+		return "", &Error{Code: "helper_failed", Message: "helper returned an empty IPv4 address"}
+	}
+	return ips.IPv4, nil
+}
+
+func (r *Runner) GetIPs(ctx context.Context) (model.IPSnapshot, error) {
 	if r.DryRun {
 		r.dryMu.Lock()
 		defer r.dryMu.Unlock()
 		if len(r.dry.IPs) == 0 {
-			return "", &Error{Code: "helper_failed", Message: "dry-run IP sequence is empty"}
+			return model.IPSnapshot{}, &Error{Code: "helper_failed", Message: "dry-run IP sequence is empty"}
 		}
 		ip := r.dry.IPs[r.dry.IPIndex%len(r.dry.IPs)]
 		r.dry.IPIndex++
-		return ip, nil
+		return model.IPSnapshot{IPv4: ip}, nil
 	}
-	var response struct {
-		IPv4 string `json:"ipv4"`
-	}
+	var response model.IPSnapshot
 	if err := r.callJSON(ctx, []string{"ip", r.Adapter}, &response); err != nil {
-		return "", err
+		return model.IPSnapshot{}, err
 	}
-	if response.IPv4 == "" {
-		return "", &Error{Code: "helper_failed", Message: "helper returned an empty exit IP"}
+	if response.IPv4 == "" && response.IPv6 == "" {
+		return model.IPSnapshot{}, &Error{Code: "helper_failed", Message: "helper returned empty exit IPs"}
 	}
-	return response.IPv4, nil
+	return response, nil
 }
 
 func (r *Runner) XUIStatus(ctx context.Context) (model.XUISnapshot, error) {

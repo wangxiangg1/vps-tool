@@ -121,6 +121,11 @@ container without those privileges can connect to the control plane and report
 basic host state, but WARP changes will fail. The configured `x-ui` service
 name is managed through systemd or OpenRC according to the host.
 
+Status collection probes both `api.ipify.org` and `api6.ipify.org`. When IPv6
+is available, `change_ip` compares the WARP IPv6 exit address first because
+WireGuard WARP IPv4 addresses may remain stable across reconnects; it falls
+back to IPv4 when no IPv6 address is available.
+
 The service user can invoke only `/usr/local/libexec/vps-agent-helper` through
 `sudo` or `doas`; the
 Helper accepts only the documented fixed argument forms. The Helper itself is

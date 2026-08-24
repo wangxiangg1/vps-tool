@@ -124,11 +124,12 @@ func dispatch(ctx context.Context, args []string) error {
 		if len(args) != 2 {
 			return errors.New("usage: ip <adapter>")
 		}
-		value, err := publicIPv4(ctx)
-		if err != nil {
-			return err
+		ipv4, ipv4Err := publicIPv4(ctx)
+		ipv6, ipv6Err := publicIPv6(ctx)
+		if ipv4Err != nil && ipv6Err != nil {
+			return fmt.Errorf("IPv4 and IPv6 endpoint requests failed: %v; %v", ipv4Err, ipv6Err)
 		}
-		return writeJSON(ipResponse{IPv4: value})
+		return writeJSON(ipResponse{IPv4: ipv4, IPv6: ipv6})
 	case "xui":
 		if len(args) != 3 {
 			return errors.New("usage: xui <unit> <status|restart>")
@@ -513,6 +514,14 @@ func fileExists(path string) bool {
 }
 
 func publicIPv4(ctx context.Context) (string, error) {
+	return publicIP(ctx, "https://api.ipify.org", true)
+}
+
+func publicIPv6(ctx context.Context) (string, error) {
+	return publicIP(ctx, "https://api6.ipify.org", false)
+}
+
+func publicIP(ctx context.Context, endpoint string, wantIPv4 bool) (string, error) {
 	transport := &http.Transport{
 		Proxy:               nil,
 		TLSClientConfig:     &tls.Config{MinVersion: tls.VersionTLS12},
@@ -522,7 +531,7 @@ func publicIPv4(ctx context.Context) (string, error) {
 		}).DialContext,
 	}
 	client := &http.Client{Timeout: 8 * time.Second, Transport: transport}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.ipify.org", nil)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return "", err
 	}
@@ -539,8 +548,12 @@ func publicIPv4(ctx context.Context) (string, error) {
 		return "", err
 	}
 	address, err := netip.ParseAddr(strings.TrimSpace(string(body)))
-	if err != nil || !address.Is4() {
-		return "", errors.New("IP endpoint returned an invalid IPv4 address")
+	if err != nil || (wantIPv4 && !address.Is4()) || (!wantIPv4 && !address.Is6()) {
+		family := "IPv6"
+		if wantIPv4 {
+			family = "IPv4"
+		}
+		return "", fmt.Errorf("IP endpoint returned an invalid %s address", family)
 	}
 	return address.String(), nil
 }
@@ -648,7 +661,8 @@ type xuiResponse struct {
 }
 
 type ipResponse struct {
-	IPv4 string `json:"ipv4"`
+	IPv4 string `json:"ipv4,omitempty"`
+	IPv6 string `json:"ipv6,omitempty"`
 }
 
 func writeJSON(value any) error {

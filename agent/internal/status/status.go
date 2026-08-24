@@ -54,7 +54,7 @@ type Collector struct {
 type Backend interface {
 	WarpStatus(context.Context) (model.WarpSnapshot, error)
 	XUIStatus(context.Context) (model.XUISnapshot, error)
-	GetIP(context.Context) (string, error)
+	GetIPs(context.Context) (model.IPSnapshot, error)
 }
 
 type Report struct {
@@ -134,7 +134,7 @@ func (c *FullCollector) Collect(ctx context.Context) (Report, error) {
 	var group sync.WaitGroup
 	var warpState model.WarpSnapshot
 	var xuiState model.XUISnapshot
-	var ip string
+	var ips model.IPSnapshot
 	var warpErr, xuiErr, ipErr error
 	group.Add(3)
 	go func() {
@@ -147,7 +147,7 @@ func (c *FullCollector) Collect(ctx context.Context) (Report, error) {
 	}()
 	go func() {
 		defer group.Done()
-		ip, ipErr = c.backend.GetIP(ctx)
+		ips, ipErr = c.backend.GetIPs(ctx)
 	}()
 	group.Wait()
 
@@ -165,8 +165,13 @@ func (c *FullCollector) Collect(ctx context.Context) (Report, error) {
 	}
 	if ipErr != nil {
 		report.Errors["egress_ip"] = errorText(ipErr)
-	} else if ip != "" {
-		report.EgressIPv4 = ip
+	} else {
+		if ips.IPv4 != "" {
+			report.EgressIPv4 = ips.IPv4
+		}
+		if ips.IPv6 != "" {
+			report.EgressIPv6 = ips.IPv6
+		}
 	}
 	if len(report.Errors) == 0 {
 		report.Errors = nil

@@ -25,6 +25,11 @@ type WarpSnapshot struct {
 	IPv6  string    `json:"ipv6,omitempty"`
 }
 
+type IPSnapshot struct {
+	IPv4 string `json:"ipv4,omitempty"`
+	IPv6 string `json:"ipv6,omitempty"`
+}
+
 // XUIState is the normalized service state reported by the fixed helper.
 type XUIState string
 

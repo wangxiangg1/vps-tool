@@ -152,9 +152,9 @@ func (e *Executor) execute(ctx context.Context, command protocol.Command) Result
 	case "get_status":
 		payload, err = e.collector.Collect(ctx)
 	case "get_ip":
-		var ip string
-		ip, err = e.manager.GetIP(ctx)
-		payload = map[string]string{"egress_ipv4": ip}
+		var ips model.IPSnapshot
+		ips, err = e.manager.GetIPs(ctx)
+		payload = ips
 	case "warp_on":
 		var snapshot model.WarpSnapshot
 		var note string

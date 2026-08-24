@@ -28,7 +28,7 @@ type Manager struct {
 	stepTimeout  time.Duration
 	ipTTL        time.Duration
 	ipMu         sync.Mutex
-	cachedIP     string
+	cachedIPs    model.IPSnapshot
 	cachedAt     time.Time
 }
 
@@ -55,25 +55,36 @@ func (m *Manager) SetTimings(pollInterval, stepTimeout time.Duration) {
 }
 
 func (m *Manager) GetIP(ctx context.Context) (string, error) {
-	m.ipMu.Lock()
-	if m.cachedIP != "" && time.Since(m.cachedAt) < m.ipTTL {
-		ip := m.cachedIP
-		m.ipMu.Unlock()
-		return ip, nil
-	}
-	m.ipMu.Unlock()
-	ip, err := m.backend.GetIP(ctx)
+	ips, err := m.GetIPs(ctx)
 	if err != nil {
 		return "", err
 	}
-	if ip == "" {
-		return "", &OperationError{CodeValue: "ip_check_failed", Message: "helper returned an empty exit IP"}
+	if ips.IPv4 == "" {
+		return "", &OperationError{CodeValue: "ip_check_failed", Message: "helper returned an empty IPv4 exit IP"}
+	}
+	return ips.IPv4, nil
+}
+
+func (m *Manager) GetIPs(ctx context.Context) (model.IPSnapshot, error) {
+	m.ipMu.Lock()
+	if (m.cachedIPs.IPv4 != "" || m.cachedIPs.IPv6 != "") && time.Since(m.cachedAt) < m.ipTTL {
+		ips := m.cachedIPs
+		m.ipMu.Unlock()
+		return ips, nil
+	}
+	m.ipMu.Unlock()
+	ips, err := m.backend.GetIPs(ctx)
+	if err != nil {
+		return model.IPSnapshot{}, err
+	}
+	if ips.IPv4 == "" && ips.IPv6 == "" {
+		return model.IPSnapshot{}, &OperationError{CodeValue: "ip_check_failed", Message: "helper returned empty exit IPs"}
 	}
 	m.ipMu.Lock()
-	m.cachedIP = ip
+	m.cachedIPs = ips
 	m.cachedAt = time.Now()
 	m.ipMu.Unlock()
-	return ip, nil
+	return ips, nil
 }
 
 func (m *Manager) WarpStatus(ctx context.Context) (model.WarpSnapshot, error) {
@@ -162,7 +173,7 @@ func (m *Manager) toggle(ctx context.Context, on bool) (model.WarpSnapshot, stri
 
 func (m *Manager) invalidateIP() {
 	m.ipMu.Lock()
-	m.cachedIP = ""
+	m.cachedIPs = model.IPSnapshot{}
 	m.cachedAt = time.Time{}
 	m.ipMu.Unlock()
 }
