@@ -19,6 +19,7 @@ from .gateway import ConnectionManager
 from .nodes import NodeService, NodeValidationError
 from .scheduler import ScheduleValidationError, Scheduler, TaskService
 from .schemas import (
+    ChangePasswordRequest,
     LoginRequest,
     NodeCreateRequest,
     NodeUpdateRequest,
@@ -32,9 +33,11 @@ from .security import (
     create_session,
     delete_session,
     ensure_admin,
+    hash_password,
     require_csrf,
     require_session,
     rotate_csrf_token,
+    verify_password,
 )
 from .timeutil import iso_now
 
@@ -148,6 +151,46 @@ def build_app(settings: Settings | None = None) -> FastAPI:
             "csrf_token": rotate_csrf_token(database, session),
             "expires_at": session["expires_at"],
         }
+
+    @app.post("/api/auth/change-password")
+    async def change_password(
+        body: ChangePasswordRequest,
+        session: dict[str, Any] = Depends(require_csrf),
+    ) -> dict[str, str]:
+        row = database.fetchone(
+            "SELECT password_hash FROM users WHERE id = ?",
+            (session["user_id"],),
+        )
+        if not row or not verify_password(body.current_password, row["password_hash"]):
+            raise _error(403, "current_password_invalid", "当前密码不正确")
+        if body.new_password != body.confirm_password:
+            raise _error(422, "password_confirmation_mismatch", "两次输入的新密码不一致")
+        password_size = len(body.new_password.encode("utf-8"))
+        if password_size < 12:
+            raise _error(422, "password_too_short", "新密码至少需要 12 个 UTF-8 字节")
+        if password_size > 72:
+            raise _error(422, "password_too_long", "新密码最多只能使用 72 个 UTF-8 字节")
+        if body.current_password == body.new_password:
+            raise _error(422, "password_unchanged", "新密码不能与当前密码相同")
+        now = iso_now()
+        with database.transaction(immediate=True) as connection:
+            connection.execute(
+                "UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?",
+                (hash_password(body.new_password), now, session["user_id"]),
+            )
+            connection.execute(
+                "DELETE FROM sessions WHERE user_id = ?",
+                (session["user_id"],),
+            )
+            connection.execute(
+                """
+                INSERT INTO audit_logs
+                  (id, actor_type, actor_id, event_type, node_id, metadata_json, created_at)
+                VALUES (?, 'admin', ?, 'password_changed', NULL, '{}', ?)
+                """,
+                (str(uuid.uuid4()), session["user_id"], now),
+            )
+        return {"status": "password_changed"}
 
     @app.post("/api/auth/logout")
     async def logout(

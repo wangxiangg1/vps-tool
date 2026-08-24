@@ -14,6 +14,12 @@ class LoginRequest(StrictModel):
     password: StrictStr = Field(min_length=1, max_length=256)
 
 
+class ChangePasswordRequest(StrictModel):
+    current_password: StrictStr = Field(min_length=1, max_length=256)
+    new_password: StrictStr = Field(min_length=1, max_length=256)
+    confirm_password: StrictStr = Field(min_length=1, max_length=256)
+
+
 class NodeCreateRequest(StrictModel):
     name: StrictStr = Field(min_length=1, max_length=100)
     region: StrictStr = Field(default="", max_length=100)

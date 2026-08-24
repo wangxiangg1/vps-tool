@@ -872,6 +872,14 @@ strong {
   white-space: nowrap;
 }
 
+.password-dialog {
+  width: min(560px, calc(100% - 32px));
+}
+
+.password-form-grid {
+  margin-top: 18px;
+}
+
 .dashboard-layout {
   display: grid;
   min-height: calc(100vh - 80px);

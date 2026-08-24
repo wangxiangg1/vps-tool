@@ -70,6 +70,7 @@
     close: '<path d="M18 6 6 18M6 6l12 12"/>',
     content_copy: '<rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
     edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"/>',
+    key: '<circle cx="8" cy="15" r="4"/><path d="m11 12 8-8M16 5l3 3M14 7l3 3"/>',
     memory: '<rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3"/>',
     developer_board: '<rect width="14" height="18" x="5" y="3" rx="2"/><path d="M9 7h6M9 11h6M9 15h4M3 7h2M3 11h2M3 15h2M19 7h2M19 11h2M19 15h2"/>',
     hard_drive: '<rect width="20" height="8" x="2" y="3" rx="2"/><rect width="20" height="8" x="2" y="13" rx="2"/><path d="M6 7h.01M6 17h.01"/>',
@@ -598,6 +599,12 @@
     $("taskFormMessage").textContent = "";
     openDialog("taskDialog");
   }
+  function openPasswordForm() {
+    $("passwordForm").reset();
+    $("passwordFormMessage").textContent = "";
+    openDialog("passwordDialog");
+    window.setTimeout(() => $("currentPassword").focus(), 0);
+  }
   function exportAudit() {
     const rows = [["action", "node_id", "status", "created_at", "message"], ...filteredActions().map((item) => [actionLabels[item.action] || item.action, item.node_id, statusLabels[item.status] || item.status, item.created_at, item.error_message || ""])];
     const csv = rows.map((row) => row.map((value) => `"${text(value, "").replace(/"/g, '""')}"`).join(",")).join("\r\n");
@@ -639,6 +646,28 @@
     const input = $("password"); const visible = input.type === "password";
     input.type = visible ? "text" : "password";
     $("passwordToggle").innerHTML = iconSvg(visible ? "visibility" : "visibility_off");
+  });
+  $("changePasswordButton").addEventListener("click", openPasswordForm);
+  $("passwordForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const submit = $("passwordFormSubmit");
+    submit.disabled = true;
+    $("passwordFormMessage").textContent = "正在更新密码……";
+    try {
+      await api("/api/auth/change-password", { method: "POST", body: {
+        current_password: $("currentPassword").value,
+        new_password: $("newPassword").value,
+        confirm_password: $("confirmPassword").value,
+      } });
+      closeDialog("passwordDialog");
+      state.csrfToken = "";
+      state.user = null;
+      showLogin("密码已修改，请使用新密码重新登录。");
+    } catch (error) {
+      $("passwordFormMessage").textContent = error.message;
+    } finally {
+      submit.disabled = false;
+    }
   });
   $("logoutButton").addEventListener("click", async () => {
     try { await api("/api/auth/logout", { method: "POST" }); } catch (_) { /* Session may already be gone. */ }

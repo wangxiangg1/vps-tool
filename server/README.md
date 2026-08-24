@@ -47,6 +47,7 @@ python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1
 ### 认证
 
 - `POST /api/auth/login`：JSON `{ "username": "...", "password": "..." }`；返回 Session Cookie 和 CSRF Token。
+- `POST /api/auth/change-password`：JSON `{ "current_password": "...", "new_password": "...", "confirm_password": "..." }`；成功后注销该管理员的全部会话，密码要求为 12 至 72 个 UTF-8 字节。
 - `GET /api/auth/me`：查看当前管理员。
 - `POST /api/auth/logout`：需要 CSRF，销毁服务端 Session。
 

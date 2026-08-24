@@ -106,6 +106,7 @@
               <span class="operator-avatar material-symbols-outlined" aria-hidden="true">person</span>
               <span><strong id="operatorName">管理员</strong><small>主控管理员</small></span>
             </div>
+            <button id="changePasswordButton" class="button button-quiet button-small" type="button" title="修改管理员密码"><span class="button-icon material-symbols-outlined" aria-hidden="true">key</span>账户安全</button>
             <button id="logoutButton" class="text-button" type="button">退出登录</button>
           </div>
         </header>
@@ -311,6 +312,20 @@
           <p id="confirmMessage" class="dialog-message"></p>
           <div id="confirmDetails" class="dialog-details"></div>
           <div class="dialog-actions"><button class="button button-quiet" type="submit" value="cancel">取消</button><button id="confirmProceed" class="button button-danger" type="submit" value="confirm">确认执行</button></div>
+        </form>
+      </dialog>
+
+      <dialog id="passwordDialog" class="form-dialog password-dialog" aria-labelledby="passwordDialogTitle">
+        <form id="passwordForm">
+          <div class="form-dialog-header"><div><span class="section-kicker">ACCOUNT / SECURITY</span><h2 id="passwordDialogTitle">修改管理员密码</h2></div><button class="icon-button" type="button" data-close-dialog="passwordDialog" aria-label="关闭修改密码窗口"><span class="material-symbols-outlined" aria-hidden="true">close</span></button></div>
+          <p class="dialog-message">修改成功后，所有已登录设备都会退出，需要使用新密码重新登录。</p>
+          <div class="dialog-form-grid password-form-grid">
+            <label class="form-field form-field-wide"><span>当前密码</span><input id="currentPassword" name="current_password" type="password" autocomplete="current-password" required maxlength="256"></label>
+            <label class="form-field"><span>新密码</span><input id="newPassword" name="new_password" type="password" autocomplete="new-password" required maxlength="256"><small>12–72 个 UTF-8 字节</small></label>
+            <label class="form-field"><span>确认新密码</span><input id="confirmPassword" name="confirm_password" type="password" autocomplete="new-password" required maxlength="256"></label>
+          </div>
+          <p id="passwordFormMessage" class="form-message" role="alert"></p>
+          <div class="dialog-actions"><button class="button button-quiet" type="button" data-close-dialog="passwordDialog">取消</button><button id="passwordFormSubmit" class="button button-primary" type="submit">更新密码</button></div>
         </form>
       </dialog>
 
