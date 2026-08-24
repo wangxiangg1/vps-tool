@@ -121,7 +121,20 @@ func (r *Runner) BackupPath(backupID string) (string, error) {
 	if err := os.MkdirAll(base, 0700); err != nil {
 		return "", fmt.Errorf("create backup directory: %w", err)
 	}
-	return filepath.Join(base, backupID+".db"), nil
+	path := filepath.Join(base, backupID+".db")
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if err != nil && !errors.Is(err, os.ErrExist) {
+		return "", fmt.Errorf("prepare backup file: %w", err)
+	}
+	if file != nil {
+		if err := file.Close(); err != nil {
+			return "", fmt.Errorf("close prepared backup file: %w", err)
+		}
+		if err := os.Chmod(path, 0600); err != nil {
+			return "", fmt.Errorf("protect prepared backup file: %w", err)
+		}
+	}
+	return path, nil
 }
 
 func (r *Runner) WarpStatus(ctx context.Context) (model.WarpSnapshot, error) {

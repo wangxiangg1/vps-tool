@@ -433,6 +433,9 @@ func (b broker) xuiDatabase(ctx context.Context, rawUnit, operation, path string
 		if err != nil {
 			return err
 		}
+		if err := adoptBackupOwnership(path); err != nil {
+			return err
+		}
 		return writeJSON(xuiBackupResponse{Method: method, Database: database})
 	}
 	return restoreXUIDatabase(ctx, rawUnit, database, path)
