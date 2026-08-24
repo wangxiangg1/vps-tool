@@ -2593,6 +2593,14 @@ textarea:focus-visible {
   line-height: 1.15;
 }
 
+.detail-section-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 .detail-node-icon {
   position: relative;
   display: grid;
