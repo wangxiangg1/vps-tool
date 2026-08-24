@@ -27,7 +27,6 @@ const (
 	maxWatchdogDelay  = 15 * time.Minute
 	maxWatchdogToken  = 64
 	watchdogPrefix    = "vps-agent-watchdog-"
-	warpInterface     = "wgcf"
 	warpGoUnit        = "warp-go.service"
 )
 
@@ -125,9 +124,6 @@ func dispatch(ctx context.Context, args []string) error {
 		if len(args) != 2 {
 			return errors.New("usage: ip <adapter>")
 		}
-		if _, err := b.backend(args[1]); err != nil {
-			return err
-		}
 		value, err := publicIPv4(ctx)
 		if err != nil {
 			return err
@@ -182,7 +178,7 @@ func (b broker) backend(adapter string) (warpBackend, error) {
 	case "warp-cli":
 		return cliBackend{}, nil
 	case "wgcf":
-		return wgcfBackend{}, nil
+		return wgcfBackend{interfaceName: "wgcf"}, nil
 	case "warp-go":
 		return warpGoBackend{}, nil
 	default:
@@ -194,8 +190,12 @@ func (b broker) autoBackend() (warpBackend, error) {
 	if _, err := findProgram("warp-cli"); err == nil {
 		return cliBackend{}, nil
 	}
-	if _, err := findProgram("wg-quick"); err == nil && fileExists("/etc/wireguard/wgcf.conf") {
-		return wgcfBackend{}, nil
+	if _, err := findProgram("wg-quick"); err == nil {
+		for _, interfaceName := range []string{"warp", "wgcf"} {
+			if fileExists("/etc/wireguard/" + interfaceName + ".conf") {
+				return wgcfBackend{interfaceName: interfaceName}, nil
+			}
+		}
 	}
 	if serviceExists(warpGoUnit) {
 		return warpGoBackend{}, nil
@@ -239,10 +239,12 @@ func (cliBackend) Off(ctx context.Context) error {
 	return requireSuccess(result, "warp-cli disconnect")
 }
 
-type wgcfBackend struct{}
+type wgcfBackend struct {
+	interfaceName string
+}
 
-func (wgcfBackend) Status(ctx context.Context) (string, error) {
-	result, err := runProgram(ctx, "ip", "link", "show", "dev", warpInterface)
+func (b wgcfBackend) Status(ctx context.Context) (string, error) {
+	result, err := runProgram(ctx, "ip", "link", "show", "dev", b.interfaceName)
 	if err != nil {
 		return "", err
 	}
@@ -252,16 +254,16 @@ func (wgcfBackend) Status(ctx context.Context) (string, error) {
 	return "on", nil
 }
 
-func (wgcfBackend) On(ctx context.Context) error {
-	result, err := runProgram(ctx, "wg-quick", "up", warpInterface)
+func (b wgcfBackend) On(ctx context.Context) error {
+	result, err := runProgram(ctx, "wg-quick", "up", b.interfaceName)
 	if err != nil {
 		return err
 	}
 	return requireSuccess(result, "wg-quick up")
 }
 
-func (wgcfBackend) Off(ctx context.Context) error {
-	result, err := runProgram(ctx, "wg-quick", "down", warpInterface)
+func (b wgcfBackend) Off(ctx context.Context) error {
+	result, err := runProgram(ctx, "wg-quick", "down", b.interfaceName)
 	if err != nil {
 		return err
 	}

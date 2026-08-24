@@ -210,7 +210,9 @@ rc-service vps-agent start
 rc-service vps-agent status
 ```
 
-The fixed Helper uses `rc-service` for `x-ui` and `warp-go`. Its finite WARP
+The fixed Helper uses `rc-service` for `x-ui` and `warp-go`. For WireGuard mode,
+the `generic` adapter detects both the standard `wgcf` interface/configuration
+and the fscarmen WARP script's `warp` interface/configuration. Its finite WARP
 recovery watchdog does not require `systemd-run`; it uses the root-owned,
 identity-checked child process described above.
 
