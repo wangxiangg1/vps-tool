@@ -26,6 +26,7 @@ class Settings:
     db_path: Path
     admin_user: str
     admin_password: str
+    backup_dir: Path = Path("./data/backups")
     session_ttl_seconds: int = 28800
     cookie_secure: bool = True
     cookie_name: str = "vps_tool_session"
@@ -63,8 +64,13 @@ class Settings:
         db_path = Path(raw_path).expanduser()
         if not db_path.is_absolute():
             db_path = Path.cwd() / db_path
+        raw_backup_path = os.getenv("VPS_TOOL_BACKUP_DIR", "")
+        backup_dir = Path(raw_backup_path).expanduser() if raw_backup_path else db_path.parent / "backups"
+        if not backup_dir.is_absolute():
+            backup_dir = Path.cwd() / backup_dir
         return cls(
             db_path=db_path,
+            backup_dir=backup_dir,
             admin_user=admin_user,
             admin_password=admin_password,
             session_ttl_seconds=session_ttl,

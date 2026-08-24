@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -26,6 +27,23 @@ type Result struct {
 	FinishedAt time.Time `json:"finished_at"`
 }
 
+type Installer interface {
+	InstallWARP(context.Context) (model.WarpSnapshot, error)
+	InstallXUI(context.Context) (model.XUISnapshot, error)
+	BackupPath(string) (string, error)
+	BackupXUI(context.Context, string) (map[string]any, error)
+	RestoreXUI(context.Context, string) error
+}
+
+type BackupTransport interface {
+	Upload(context.Context, string, string) (int64, string, error)
+	Download(context.Context, string, string) (int64, string, error)
+}
+
+type credentialSink interface {
+	SetCredential(string)
+}
+
 type Executor struct {
 	nodeID    string
 	manager   *warp.Manager
@@ -33,10 +51,18 @@ type Executor struct {
 	upgrader  interface {
 		Upgrade(context.Context) (model.UpgradeResult, error)
 	}
-	journal  *journal.Journal
-	stateMu  sync.Mutex
-	activeMu sync.Mutex
-	active   map[string]struct{}
+	installer       Installer
+	backupTransport BackupTransport
+	journal         *journal.Journal
+	stateMu         sync.Mutex
+	activeMu        sync.Mutex
+	active          map[string]struct{}
+}
+
+func (e *Executor) SetCredential(value string) {
+	if sink, ok := e.backupTransport.(credentialSink); ok {
+		sink.SetCredential(value)
+	}
 }
 
 func NewExecutor(
@@ -47,17 +73,21 @@ func NewExecutor(
 		Upgrade(context.Context) (model.UpgradeResult, error)
 	},
 	requestJournal *journal.Journal,
+	installer Installer,
+	backupTransport BackupTransport,
 ) (*Executor, error) {
 	if nodeID == "" || manager == nil || collector == nil || upgrader == nil || requestJournal == nil {
 		return nil, fmt.Errorf("action executor dependencies are incomplete")
 	}
 	return &Executor{
-		nodeID:    nodeID,
-		manager:   manager,
-		collector: collector,
-		upgrader:  upgrader,
-		journal:   requestJournal,
-		active:    make(map[string]struct{}),
+		nodeID:          nodeID,
+		manager:         manager,
+		collector:       collector,
+		upgrader:        upgrader,
+		journal:         requestJournal,
+		installer:       installer,
+		backupTransport: backupTransport,
+		active:          make(map[string]struct{}),
 	}, nil
 }
 
@@ -207,6 +237,22 @@ func (e *Executor) execute(ctx context.Context, command protocol.Command) Result
 		payload = map[string]any{"before": before, "after": after}
 	case "upgrade_agent":
 		payload, err = e.upgrader.Upgrade(ctx)
+	case "install_warp":
+		if e.installer == nil {
+			err = &executorError{code: "unsupported_action", message: "WARP installer is not available"}
+			break
+		}
+		payload, err = e.installer.InstallWARP(ctx)
+	case "install_xui":
+		if e.installer == nil {
+			err = &executorError{code: "unsupported_action", message: "x-ui installer is not available"}
+			break
+		}
+		payload, err = e.installer.InstallXUI(ctx)
+	case "backup_xui":
+		payload, err = e.backupXUI(ctx, command.Parameters)
+	case "restore_xui":
+		payload, err = e.restoreXUI(ctx, command.Parameters)
 	default:
 		err = &executorError{code: "unsupported_action", message: "action is not supported by this agent"}
 	}
@@ -223,6 +269,56 @@ func (e *Executor) execute(ctx context.Context, command protocol.Command) Result
 	result.Result = payload
 	result.FinishedAt = time.Now().UTC()
 	return result
+}
+
+func (e *Executor) backupXUI(ctx context.Context, raw []byte) (map[string]any, error) {
+	if e.installer == nil || e.backupTransport == nil {
+		return nil, &executorError{code: "unsupported_action", message: "x-ui backup transport is not available"}
+	}
+	parameters, err := protocol.DecodeBackupParameters(raw)
+	if err != nil {
+		return nil, err
+	}
+	path, err := e.installer.BackupPath(parameters.BackupID)
+	if err != nil {
+		return nil, err
+	}
+	defer os.Remove(path)
+	metadata, err := e.installer.BackupXUI(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+	size, checksum, err := e.backupTransport.Upload(ctx, parameters.BackupID, path)
+	if err != nil {
+		return nil, err
+	}
+	metadata["backup_id"] = parameters.BackupID
+	metadata["size_bytes"] = size
+	metadata["sha256"] = checksum
+	return metadata, nil
+}
+
+func (e *Executor) restoreXUI(ctx context.Context, raw []byte) (map[string]any, error) {
+	if e.installer == nil || e.backupTransport == nil {
+		return nil, &executorError{code: "unsupported_action", message: "x-ui restore transport is not available"}
+	}
+	parameters, err := protocol.DecodeBackupParameters(raw)
+	if err != nil {
+		return nil, err
+	}
+	path, err := e.installer.BackupPath(parameters.BackupID)
+	if err != nil {
+		return nil, err
+	}
+	defer os.Remove(path)
+	size, checksum, err := e.backupTransport.Download(ctx, parameters.BackupID, path)
+	if err != nil {
+		return nil, err
+	}
+	if err := e.installer.RestoreXUI(ctx, path); err != nil {
+		return nil, err
+	}
+	return map[string]any{"backup_id": parameters.BackupID, "size_bytes": size, "sha256": checksum}, nil
 }
 
 func (e *Executor) persist(result Result) error {

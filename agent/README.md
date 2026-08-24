@@ -151,6 +151,10 @@ watchdog <adapter> arm <random-token> <deadline-unix> <max-attempts>
 watchdog <adapter> disarm <random-token>
 xui <validated-unit> status
 xui <validated-unit> restart
+warp <adapter> install
+xui <validated-unit> install
+xui <validated-unit> backup <agent-backup-path>
+xui <validated-unit> restore <agent-backup-path>
 ```
 
 `warp ... status` returns bounded JSON with `state` (`on`, `off`, `degraded`,
@@ -224,10 +228,23 @@ identity-checked child process described above.
 ## Actions and state
 
 Only these actions are accepted: `get_status`, `get_ip`, `warp_on`, `warp_off`,
-`change_ip`, `restart_xui`, and `upgrade_agent`. Parameters are strict JSON objects with no
+`change_ip`, `restart_xui`, `upgrade_agent`, `install_warp`, `install_xui`,
+`backup_xui`, and `restore_xui`. Parameters are strict JSON objects with no
 unknown fields. Same-node state-changing actions are serialized; status
 collection can run concurrently. Duplicate `request_id` values return the
 persisted terminal result and never execute a second time.
+
+`install_warp` downloads the fixed fscarmen installer from GitLab and selects
+the dual-stack global mode. `install_xui` downloads the fixed installer from
+the official MHSanaei/3x-ui repository. These URLs are compiled into the root
+Helper; the control plane cannot replace them with arbitrary URLs.
+
+`backup_xui` creates an online SQLite snapshot without stopping x-ui, uploads
+it to the control plane, and removes the temporary Agent copy. The Helper
+prefers `sqlite3 .backup` and falls back to a filesystem snapshot when the
+client is unavailable. `restore_xui` downloads a selected snapshot, preserves
+the current database as a rollback file, briefly stops x-ui, installs the
+snapshot, and rolls back automatically if the service fails to start.
 
 `change_ip` runs entirely locally after acceptance. It requires WARP `on` or
 `degraded`, obtains the old IP, arms a finite recovery watchdog, performs up to

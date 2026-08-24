@@ -2960,6 +2960,53 @@ textarea:focus-visible {
   max-height: none;
 }
 
+.backup-list {
+  display: grid;
+  gap: 8px;
+  padding: 14px 18px 18px;
+}
+
+.backup-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  background: var(--surface-low);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.backup-item > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.backup-item strong,
+.backup-item span,
+.backup-item code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.backup-item strong {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.backup-item span,
+.backup-item code {
+  color: var(--muted);
+  font-family: var(--font-data);
+  font-size: 9px;
+}
+
+.setup-action-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .quick-action-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));

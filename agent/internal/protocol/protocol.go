@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
 	"strings"
 	"time"
 
@@ -35,6 +36,10 @@ var actionSet = map[string]bool{
 	"change_ip":     true,
 	"restart_xui":   true,
 	"upgrade_agent": true,
+	"install_warp":  true,
+	"install_xui":   true,
+	"backup_xui":    true,
+	"restore_xui":   true,
 }
 
 type Envelope struct {
@@ -143,7 +148,7 @@ func DecodeCommand(envelope Envelope) (Command, error) {
 func IsStateChanging(action string) bool { return actionSet[action] }
 
 func Actions() []string {
-	return []string{"get_status", "get_ip", "warp_on", "warp_off", "change_ip", "restart_xui", "upgrade_agent"}
+	return []string{"get_status", "get_ip", "warp_on", "warp_off", "change_ip", "restart_xui", "upgrade_agent", "install_warp", "install_xui", "backup_xui", "restore_xui"}
 }
 
 func ValidateCommand(command Command, expectedNodeID string, now time.Time) error {
@@ -185,10 +190,28 @@ func DecodeChangeIPParameters(raw []byte) (ChangeIPParameters, error) {
 	return parameters, nil
 }
 
+type BackupParameters struct {
+	BackupID string `json:"backup_id"`
+}
+
+func DecodeBackupParameters(raw []byte) (BackupParameters, error) {
+	var parameters BackupParameters
+	if err := decodeObject(raw, &parameters); err != nil {
+		return BackupParameters{}, &ValidationError{Code: "invalid_parameters", Message: err.Error()}
+	}
+	if !backupIDPattern.MatchString(parameters.BackupID) {
+		return BackupParameters{}, &ValidationError{Code: "invalid_parameters", Message: "backup_id is invalid"}
+	}
+	return parameters, nil
+}
+
 func validateParameters(action string, raw []byte) error {
 	switch action {
 	case "change_ip":
 		_, err := DecodeChangeIPParameters(raw)
+		return err
+	case "backup_xui", "restore_xui":
+		_, err := DecodeBackupParameters(raw)
 		return err
 	default:
 		if err := decodeObject(raw, &struct{}{}); err != nil {
@@ -197,6 +220,8 @@ func validateParameters(action string, raw []byte) error {
 		return nil
 	}
 }
+
+var backupIDPattern = regexp.MustCompile(`^[A-Za-z0-9-]{36,64}$`)
 
 func decodeObject(raw []byte, target any) error {
 	trimmed := bytes.TrimSpace(raw)

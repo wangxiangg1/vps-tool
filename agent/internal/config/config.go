@@ -18,7 +18,7 @@ import (
 
 const (
 	DefaultStatePath = "/var/lib/vps-agent/requests.json"
-	DefaultVersion   = "0.3.8"
+	DefaultVersion   = "0.3.10"
 	maxConfigBytes   = 64 * 1024
 )
 

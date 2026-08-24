@@ -2,7 +2,7 @@
   "use strict";
 
   const state = {
-    csrfToken: "", user: null, nodes: [], actions: [], tasks: [], ipHistory: {},
+    csrfToken: "", user: null, nodes: [], actions: [], tasks: [], ipHistory: {}, xuiBackups: {},
     selected: new Set(), busy: new Set(), activeView: "nodes",
     activeNodeId: "", confirmAction: null, nodeFormMode: "create", editingNodeId: "",
   };
@@ -27,11 +27,13 @@
   const actionLabels = {
     get_status: "刷新状态", get_ip: "获取出口 IP", warp_on: "开启 WARP",
     warp_off: "关闭 WARP", change_ip: "切换出口 IP", restart_xui: "重启 3x-ui",
-    upgrade_agent: "升级 Agent",
+    upgrade_agent: "升级 Agent", install_warp: "安装并开启 WARP", install_xui: "安装 3x-ui",
+    backup_xui: "备份 3x-ui", restore_xui: "恢复 3x-ui",
   };
   const actionIcons = {
     get_status: "sync", get_ip: "public", warp_on: "shield", warp_off: "shield_lock",
     change_ip: "swap_horiz", restart_xui: "restart_alt", upgrade_agent: "system_update_alt",
+    install_warp: "shield", install_xui: "router", backup_xui: "backup", restore_xui: "restore",
   };
   const statusLabels = {
     online: "在线", offline: "离线", unknown: "未知", on: "开启", off: "关闭",
@@ -88,6 +90,8 @@
     history: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/>',
     filter_alt_off: '<path d="M3 3h18l-7 8v6l-4 2v-8Z"/><path d="m2 2 20 20"/>',
     terminal: '<path d="m4 17 6-6-6-6M12 19h8"/>',
+    backup: '<path d="M12 3v12M7 10l5 5 5-5"/><path d="M5 21h14"/>',
+    restore: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 8v4l3 2"/>',
   };
 
   function iconSvg(name, className) {
@@ -333,11 +337,13 @@
       : `<button class="button button-quiet button-small" type="button" data-enroll-node="${escapeHtml(node.id)}"><span class="button-icon material-symbols-outlined" aria-hidden="true">terminal</span>生成安装命令</button>`;
     const warpAction = statusValue(node, "warp_status") === "on" ? "warp_off" : "warp_on";
     const actions = ["change_ip", warpAction, "restart_xui", "get_status", "get_ip"];
+    const setupDisabled = !node.online || state.busy.has(node.id);
     $("detailContent").innerHTML = `
       <section class="detail-hero"><div class="detail-identity"><span class="detail-node-icon"><span class="material-symbols-outlined" aria-hidden="true">dns</span><i class="${node.online ? "is-online" : ""}"></i></span><div><div class="detail-title-line"><h2>${escapeHtml(node.name)}</h2>${badge(nodeStatus(node))}</div><div class="detail-id">ID: ${escapeHtml(node.id)}</div></div></div><div class="detail-hero-actions"><button class="button button-quiet button-small" data-edit-node="${escapeHtml(node.id)}" type="button"><span class="button-icon material-symbols-outlined" aria-hidden="true">edit</span>编辑节点</button><button class="button button-quiet" data-action="get_status" data-node-id="${escapeHtml(node.id)}" type="button"${!node.online || state.busy.has(node.id) ? " disabled" : ""}><span class="button-icon material-symbols-outlined" aria-hidden="true">sync</span>同步状态</button></div></section>
       <div class="detail-layout"><div class="detail-primary">
         <section class="detail-metric-grid"><div class="metric-card"><div class="metric-card-heading"><span><span class="material-symbols-outlined" aria-hidden="true">memory</span>CPU 使用率</span><strong>${cpu.toFixed(1)}%</strong></div><span class="metric-track"><i style="width:${cpu}%"></i></span></div><div class="metric-card"><div class="metric-card-heading"><span><span class="material-symbols-outlined" aria-hidden="true">developer_board</span>内存使用</span><strong>${formatBytes(memoryUsed)} / ${formatBytes(memoryTotal)}</strong></div><span class="metric-track is-blue"><i style="width:${memoryPercent}%"></i></span></div><div class="metric-card"><div class="metric-card-heading"><span><span class="material-symbols-outlined" aria-hidden="true">hard_drive</span>根分区</span><strong>${diskPercent}%</strong></div><span class="metric-track is-tertiary"><i style="width:${diskPercent}%"></i></span></div></section>
         <section class="detail-panel"><div class="detail-section-heading"><h3>快捷操作</h3><span class="table-meta">仅固定 Action 白名单</span></div><div class="quick-action-grid">${actions.map((action) => `<button type="button" class="quick-action${["warp_off", "change_ip", "restart_xui"].includes(action) ? " is-state-changing" : ""}" data-action="${action}" data-node-id="${escapeHtml(node.id)}"${!node.online || state.busy.has(node.id) ? " disabled" : ""}><span class="material-symbols-outlined" aria-hidden="true">${actionIcons[action]}</span><strong>${escapeHtml(actionLabels[action])}</strong><small>${action === "get_status" || action === "get_ip" ? "读取状态" : "记录到审计"}</small></button>`).join("")}</div></section>
+        <section class="detail-panel"><div class="detail-section-heading"><h3>系统准备</h3><span class="table-meta">固定来源 · 结构化操作</span></div><div class="quick-action-grid setup-action-grid"><button type="button" class="quick-action is-state-changing" data-action="install_warp" data-node-id="${escapeHtml(node.id)}"${setupDisabled ? " disabled" : ""}><span class="material-symbols-outlined" aria-hidden="true">${actionIcons.install_warp}</span><strong>${actionLabels.install_warp}</strong><small>双栈 · 全局</small></button><button type="button" class="quick-action is-state-changing" data-action="install_xui" data-node-id="${escapeHtml(node.id)}"${setupDisabled ? " disabled" : ""}><span class="material-symbols-outlined" aria-hidden="true">${actionIcons.install_xui}</span><strong>${actionLabels.install_xui}</strong><small>MHSanaei 官方脚本</small></button><button type="button" class="quick-action is-state-changing" data-backup-xui="${escapeHtml(node.id)}"${setupDisabled ? " disabled" : ""}><span class="material-symbols-outlined" aria-hidden="true">${actionIcons.backup_xui}</span><strong>${actionLabels.backup_xui}</strong><small>在线一致性备份</small></button><button type="button" class="quick-action is-state-changing" data-restore-xui="${escapeHtml(node.id)}"${setupDisabled ? " disabled" : ""}><span class="material-symbols-outlined" aria-hidden="true">${actionIcons.restore_xui}</span><strong>${actionLabels.restore_xui}</strong><small>选择历史备份</small></button></div></section>
         <section class="detail-panel node-information"><div class="detail-section-heading"><h3>节点信息</h3><div class="detail-section-actions">${agentButton}<span class="table-meta">最后更新：${escapeHtml(relativeTime(node.last_seen_at))}</span></div></div><dl><div><dt>公共 IPv4</dt><dd>${escapeHtml(node.public_ipv4 || "未采集")}</dd></div><div><dt>公共 IPv6</dt><dd>${escapeHtml(node.public_ipv6 || "未采集")}</dd></div><div><dt>Agent 版本</dt><dd>${escapeHtml(node.agent_version || "—")}</dd></div><div><dt>系统 / 架构</dt><dd>${escapeHtml(`${node.os_name || "—"} ${node.os_version || ""} / ${node.architecture || "—"}`)}</dd></div><div><dt>WARP 接口</dt><dd>${badge(statusValue(node, "warp_status"))}</dd></div><div><dt>3x-ui 服务</dt><dd>${badge(statusValue(node, "xui_status"))} ${escapeHtml(node.xui_service || "x-ui")}</dd></div><div><dt>运行时间</dt><dd>${escapeHtml(formatUptime(node.uptime_seconds))}</dd></div><div><dt>地区</dt><dd>${escapeHtml(node.region || "未设置")}</dd></div></dl></section>
         <section class="detail-panel ip-history-launch-panel"><div class="detail-section-heading"><div><h3>出口 IP 历史</h3><span class="table-meta">最多保留 100 条</span></div><button class="button button-quiet button-small" type="button" data-open-ip-history="${escapeHtml(node.id)}"><span class="button-icon material-symbols-outlined" aria-hidden="true">history</span>查看历史</button></div></section>
       </div><aside class="detail-secondary"><section class="detail-panel recent-operations"><div class="detail-section-heading"><h3>最近操作</h3><button class="text-button" type="button" data-view="audit">查看全部</button></div><div class="timeline">${recent.length ? recent.map((item) => `<div class="timeline-item status-${escapeHtml(item.status)}"><i aria-hidden="true"></i><div><div><strong>${escapeHtml(actionLabels[item.action] || item.action)}</strong><time>${escapeHtml(relativeTime(item.created_at))}</time></div><p>${escapeHtml(item.error_message || (item.result ? "Agent 已返回结果。" : "等待 Agent 回执。"))}</p>${badge(item.status)}</div></div>`).join("") : `<div class="detail-empty">暂无操作记录。</div>`}</div></section><section class="danger-zone"><div><span class="material-symbols-outlined" aria-hidden="true">warning</span><h3>危险操作</h3></div><p>删除节点会吊销凭据、停止关联任务，并从控制平面移除节点。</p><button class="button button-danger button-wide" type="button" data-delete-node="${escapeHtml(node.id)}">删除节点</button></section></aside></div>`;
@@ -386,6 +392,59 @@
     }
   }
 
+  function renderXuiBackups(nodeId, errorMessage) {
+    const node = state.nodes.find((item) => item.id === nodeId);
+    if (!node) return;
+    const backups = state.xuiBackups[nodeId] || [];
+    $("xuiBackupDialogMessage").textContent = node.name;
+    $("xuiBackupDialogContent").innerHTML = errorMessage
+      ? `<div class="history-empty is-error"><span class="material-symbols-outlined" aria-hidden="true">error</span><div><strong>备份列表读取失败</strong><span>${escapeHtml(errorMessage)}</span></div></div>`
+      : backups.length
+        ? `<div class="backup-list">${backups.map((item) => `<article class="backup-item"><div><strong>${escapeHtml(item.filename)}</strong><span>${formatBytes(item.size_bytes || 0)} · ${escapeHtml(formatTime(item.created_at, true))}</span><code>${escapeHtml((item.sha256 || "").slice(0, 16))}…</code></div><button class="button button-danger button-small" type="button" data-restore-backup="${escapeHtml(item.id)}" data-restore-node="${escapeHtml(nodeId)}"${item.status !== "ready" || state.busy.has(nodeId) ? " disabled" : ""}><span class="button-icon material-symbols-outlined" aria-hidden="true">restore</span>恢复</button></article>`).join("")}</div>`
+        : `<div class="history-empty"><span class="material-symbols-outlined" aria-hidden="true">backup</span><div><strong>暂无 3x-ui 备份</strong><span>先在节点详情执行一次备份。</span></div></div>`;
+    hydrateIcons($("xuiBackupDialogContent"));
+  }
+
+  async function loadXuiBackups(nodeId) {
+    try {
+      const response = await api(`/api/nodes/${encodeURIComponent(nodeId)}/xui-backups`);
+      state.xuiBackups[nodeId] = response.backups || [];
+      if ($("xuiBackupDialog").open) renderXuiBackups(nodeId);
+    } catch (error) {
+      if ($("xuiBackupDialog").open) renderXuiBackups(nodeId, error.message);
+      notify(`3x-ui 备份列表读取失败：${error.message}`, "error");
+    }
+  }
+
+  async function openXuiBackups(nodeId) {
+    if (!state.nodes.some((node) => node.id === nodeId)) return;
+    $("xuiBackupDialogContent").innerHTML = `<div class="history-empty is-loading"><span class="state-spinner" aria-hidden="true"></span><div><strong>正在读取备份</strong><span>请稍候。</span></div></div>`;
+    openDialog("xuiBackupDialog");
+    await loadXuiBackups(nodeId);
+  }
+
+  async function backupXui(nodeId) {
+    const node = state.nodes.find((item) => item.id === nodeId);
+    if (!node || state.busy.has(nodeId)) return;
+    confirmAction(`${node.name} 将创建一份 3x-ui 在线数据库备份。`, "<ul><li>不会停止 x-ui 服务。</li><li>备份完成后保存到控制端。</li></ul>", async () => {
+      try {
+        const prepared = await api(`/api/nodes/${encodeURIComponent(nodeId)}/xui-backups/prepare`, { method: "POST" });
+        await submitAction(nodeId, "backup_xui", { backup_id: prepared.backup.id });
+        await loadXuiBackups(nodeId);
+      } catch (error) { notify(`创建 3x-ui 备份失败：${error.message}`, "error"); }
+    }, { title: actionLabels.backup_xui, proceed: "开始备份" });
+  }
+
+  function restoreXui(nodeId, backupId) {
+    const node = state.nodes.find((item) => item.id === nodeId);
+    const backup = (state.xuiBackups[nodeId] || []).find((item) => item.id === backupId);
+    if (!node || !backup || state.busy.has(nodeId)) return;
+    closeDialog("xuiBackupDialog");
+    confirmAction(`${node.name} 将恢复 3x-ui 数据库。`, `<ul><li>恢复前会保留目标 VPS 当前数据库。</li><li>恢复过程会短暂重启 x-ui 服务。</li><li>恢复文件：${escapeHtml(backup.filename)}</li></ul>`, async () => {
+      await submitAction(nodeId, "restore_xui", { backup_id: backupId });
+    }, { title: actionLabels.restore_xui, proceed: "确认恢复" });
+  }
+
   function filteredActions() {
     const query = $("auditSearch").value.trim().toLowerCase();
     if (!query) return state.actions;
@@ -419,32 +478,34 @@
     openDialog("confirmDialog");
   }
 
-  async function submitAction(nodeId, action) {
+  async function submitAction(nodeId, action, parameters = {}) {
     const previousVersion = (state.nodes.find((node) => node.id === nodeId) || {}).agent_version;
     state.busy.add(nodeId);
     if (state.activeView === "detail") renderNodeDetail();
     try {
-      const response = await api(`/api/nodes/${encodeURIComponent(nodeId)}/actions`, { method: "POST", body: { action, parameters: {}, queue_if_offline: false } });
+      const response = await api(`/api/nodes/${encodeURIComponent(nodeId)}/actions`, { method: "POST", body: { action, parameters, queue_if_offline: false } });
       notify(`${actionLabels[action]}：请求已提交`, "warning");
       await pollRequest(response.request && response.request.id, nodeId, action, previousVersion);
     } catch (error) { notify(`${actionLabels[action]}：${error.message}`, "error"); }
     finally { state.busy.delete(nodeId); await refreshData(false); }
   }
 
-  async function executeAction(nodeId, action, skipConfirmation) {
+  async function executeAction(nodeId, action, skipConfirmation, parameters = {}) {
     const node = state.nodes.find((item) => item.id === nodeId);
     if (!node || state.busy.has(nodeId)) return;
-    const dangerous = ["warp_on", "warp_off", "change_ip", "restart_xui", "upgrade_agent"].includes(action);
-    const run = () => submitAction(nodeId, action);
+    const dangerous = ["warp_on", "warp_off", "change_ip", "restart_xui", "upgrade_agent", "install_warp", "install_xui"].includes(action);
+    const run = () => submitAction(nodeId, action, parameters);
     if (dangerous && !skipConfirmation) {
       const upgradeDetail = action === "upgrade_agent" ? "<li>升级包仅从项目 GitHub Release 下载并校验，完成后 Agent 会自动重启。</li>" : "";
-      confirmAction(`${node.name} 将执行“${actionLabels[action]}”。`, `<ul><li>状态变更会在该节点串行执行。</li><li>请求和结果会写入操作记录。</li>${upgradeDetail}</ul>`, run, { title: actionLabels[action], proceed: "确认执行" });
+      const installDetail = action === "install_warp" ? "<li>将从 fscarmen GitLab 安装 WARP 双栈全局模式。</li>" : action === "install_xui" ? "<li>将从 MHSanaei/3x-ui 官方仓库安装 3x-ui。</li>" : "";
+      confirmAction(`${node.name} 将执行“${actionLabels[action]}”。`, `<ul><li>状态变更会在该节点串行执行。</li><li>请求和结果会写入操作记录。</li>${upgradeDetail}${installDetail}</ul>`, run, { title: actionLabels[action], proceed: "确认执行" });
     } else await run();
   }
 
   async function pollRequest(requestId, nodeId, action, previousVersion) {
     if (!requestId) return;
-    for (let attempt = 0; attempt < 260; attempt += 1) {
+    const maxAttempts = ["install_warp", "install_xui", "backup_xui", "restore_xui"].includes(action) ? 2600 : 260;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       await new Promise((resolve) => window.setTimeout(resolve, 700));
       try {
         const response = await api(`/api/action-requests/${encodeURIComponent(requestId)}`);
@@ -459,7 +520,7 @@
           return;
         }
       } catch (_) {
-        if (attempt >= 259) return;
+        if (attempt >= maxAttempts - 1) return;
       }
     }
   }
@@ -625,6 +686,16 @@
       if (node) openNodeEditor(node);
       return;
     }
+    const backupButton = event.target.closest("[data-backup-xui]");
+    if (backupButton) {
+      backupXui(backupButton.dataset.backupXui);
+      return;
+    }
+    const restoreButton = event.target.closest("[data-restore-xui]");
+    if (restoreButton) {
+      openXuiBackups(restoreButton.dataset.restoreXui);
+      return;
+    }
     const enroll = event.target.closest("[data-enroll-node]");
     if (enroll) {
       const node = state.nodes.find((item) => item.id === enroll.dataset.enrollNode);
@@ -649,6 +720,10 @@
     if (viewButton) navigate(viewButton.dataset.view);
   });
   $("closeDrawerButton").addEventListener("click", () => navigate("nodes"));
+  $("xuiBackupDialogContent").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-restore-backup]");
+    if (button) restoreXui(button.dataset.restoreNode, button.dataset.restoreBackup);
+  });
   $("auditSearch").addEventListener("input", renderAudit);
   $("exportAuditButton").addEventListener("click", exportAudit);
 

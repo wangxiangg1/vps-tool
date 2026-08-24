@@ -18,6 +18,10 @@ func TestValidateCommandActionAllowlist(t *testing.T) {
 	}
 	for _, action := range Actions() {
 		base.Action = action
+		base.Parameters = json.RawMessage(`{}`)
+		if action == "backup_xui" || action == "restore_xui" {
+			base.Parameters = json.RawMessage(`{"backup_id":"12345678-1234-1234-1234-123456789012"}`)
+		}
 		if err := ValidateCommand(base, "node-1", now); err != nil {
 			t.Fatalf("supported action %q rejected: %v", action, err)
 		}

@@ -13,9 +13,23 @@ SUPPORTED_ACTIONS = (
     "change_ip",
     "restart_xui",
     "upgrade_agent",
+    "install_warp",
+    "install_xui",
+    "backup_xui",
+    "restore_xui",
 )
 STATE_CHANGING_ACTIONS = frozenset(
-    {"warp_on", "warp_off", "change_ip", "restart_xui", "upgrade_agent"}
+    {
+        "warp_on",
+        "warp_off",
+        "change_ip",
+        "restart_xui",
+        "upgrade_agent",
+        "install_warp",
+        "install_xui",
+        "backup_xui",
+        "restore_xui",
+    }
 )
 SCHEDULED_ACTIONS = frozenset({"warp_on", "warp_off", "change_ip", "restart_xui"})
 
@@ -33,6 +47,10 @@ class ChangeIpParameters(StrictModel):
     timeout_seconds: StrictInt = Field(default=180, ge=30, le=180)
 
 
+class BackupParameters(StrictModel):
+    backup_id: StrictStr = Field(min_length=36, max_length=64, pattern=r"^[A-Za-z0-9-]+$")
+
+
 ACTION_PARAMETER_MODELS: dict[str, Type[BaseModel]] = {
     "get_status": EmptyParameters,
     "get_ip": EmptyParameters,
@@ -41,6 +59,10 @@ ACTION_PARAMETER_MODELS: dict[str, Type[BaseModel]] = {
     "change_ip": ChangeIpParameters,
     "restart_xui": EmptyParameters,
     "upgrade_agent": EmptyParameters,
+    "install_warp": EmptyParameters,
+    "install_xui": EmptyParameters,
+    "backup_xui": BackupParameters,
+    "restore_xui": BackupParameters,
 }
 
 

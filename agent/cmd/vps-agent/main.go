@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"vps-tool/agent/internal/action"
+	"vps-tool/agent/internal/artifacts"
 	"vps-tool/agent/internal/backoff"
 	"vps-tool/agent/internal/config"
 	"vps-tool/agent/internal/helper"
@@ -53,7 +54,7 @@ func main() {
 	if *dryRun {
 		cfg.DryRun = true
 	}
-	runner, err := helper.NewRunner(cfg.HelperPath, cfg.WarpAdapter, cfg.XUIUnit, cfg.DryRun)
+	runner, err := helper.NewRunner(cfg.HelperPath, cfg.WarpAdapter, cfg.XUIUnit, cfg.StatePath, cfg.DryRun)
 	if err != nil {
 		log.Fatalf("initialize helper: %v", err)
 	}
@@ -66,7 +67,11 @@ func main() {
 		log.Fatalf("initialize action manager: %v", err)
 	}
 	collector := status.NewFullCollector(cfg.NodeID, cfg.AgentVersion, manager)
-	executor, err := action.NewExecutor(cfg.NodeID, manager, collector, runner, requestJournal)
+	artifactClient, err := artifacts.NewClient(cfg.WSSURL, cfg.NodeID, cfg.Credential)
+	if err != nil {
+		log.Fatalf("initialize artifact client: %v", err)
+	}
+	executor, err := action.NewExecutor(cfg.NodeID, manager, collector, runner, requestJournal, runner, artifactClient)
 	if err != nil {
 		log.Fatalf("initialize action executor: %v", err)
 	}
@@ -151,6 +156,7 @@ func runConnectionWithResultQueue(ctx context.Context, cfg *config.Config, confi
 		}
 		cfg.Credential = issuedCredential
 		cfg.RegistrationToken = ""
+		executor.SetCredential(issuedCredential)
 	}
 	if policy != nil {
 		policy.Reset()
@@ -277,7 +283,7 @@ func handleCommand(ctx context.Context, conn wsclient.Conn, cfg config.Config, e
 
 func requiresSessionReconnect(actionName string) bool {
 	switch actionName {
-	case "change_ip", "warp_on", "warp_off":
+	case "change_ip", "warp_on", "warp_off", "install_warp":
 		return true
 	default:
 		return false

@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 
 ACTIVE_STATUSES = ("queued", "dispatched", "accepted", "running", "unknown")
 TERMINAL_STATUSES = ("succeeded", "failed", "timed_out", "expired", "skipped_offline", "canceled")
+LONG_RUNNING_ACTIONS = frozenset({"install_warp", "install_xui", "backup_xui", "restore_xui"})
 
 
 class RequestConflictError(ValueError):
@@ -94,7 +95,10 @@ class ActionService:
         request_id = request_id or str(uuid.uuid4())
         now = utc_now()
         now_text = to_iso(now)
-        deadline_text = to_iso(now + timedelta(seconds=self.settings.action_ttl_seconds))
+        ttl_seconds = self.settings.action_ttl_seconds
+        if action in LONG_RUNNING_ACTIONS:
+            ttl_seconds = max(ttl_seconds, 1800)
+        deadline_text = to_iso(now + timedelta(seconds=ttl_seconds))
         online = bool(self.gateway and self.gateway.is_online(node_id))
         requested_status = "queued" if online or queue_if_offline else "skipped_offline"
         error_code = None if requested_status == "queued" else "node_offline"
@@ -113,11 +117,13 @@ class ActionService:
                     )
                 return existing
             if action in STATE_CHANGING_ACTIONS:
+                changing_placeholders = ", ".join("?" for _ in STATE_CHANGING_ACTIONS)
+                active_placeholders = ", ".join("?" for _ in ACTIVE_STATUSES)
                 busy = connection.execute(
-                    """
+                    f"""
                     SELECT id, status FROM action_requests
-                    WHERE node_id = ? AND action IN (?, ?, ?, ?, ?)
-                      AND status IN (?, ?, ?, ?, ?)
+                    WHERE node_id = ? AND action IN ({changing_placeholders})
+                      AND status IN ({active_placeholders})
                     ORDER BY created_at DESC LIMIT 1
                     """,
                     (node_id, *STATE_CHANGING_ACTIONS, *ACTIVE_STATUSES),

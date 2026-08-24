@@ -11,6 +11,8 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -26,6 +28,8 @@ const (
 	defaultHelperTimeout = 20 * time.Second
 	upgradeHelperTimeout = 150 * time.Second
 )
+
+var backupIDPattern = regexp.MustCompile(`^[A-Za-z0-9-]{36,64}$`)
 
 var supportedAdapters = map[string]struct{}{
 	"generic":      {},
@@ -57,6 +61,7 @@ type Runner struct {
 	Path                   string
 	Adapter                string
 	Unit                   string
+	StatePath              string
 	Timeout                time.Duration
 	DryRun                 bool
 	UsePrivilegeEscalation bool
@@ -71,7 +76,7 @@ type DryRun struct {
 	IPIndex      int
 }
 
-func NewRunner(path, adapter, unit string, dryRun bool) (*Runner, error) {
+func NewRunner(path, adapter, unit, statePath string, dryRun bool) (*Runner, error) {
 	if err := validation.AdapterName(adapter); err != nil {
 		return nil, err
 	}
@@ -90,6 +95,7 @@ func NewRunner(path, adapter, unit string, dryRun bool) (*Runner, error) {
 		Path:                   path,
 		Adapter:                adapter,
 		Unit:                   unit,
+		StatePath:              statePath,
 		Timeout:                defaultHelperTimeout,
 		DryRun:                 dryRun,
 		UsePrivilegeEscalation: !dryRun,
@@ -102,6 +108,20 @@ func NewRunner(path, adapter, unit string, dryRun bool) (*Runner, error) {
 		}
 	}
 	return runner, nil
+}
+
+func (r *Runner) BackupPath(backupID string) (string, error) {
+	if !backupIDPattern.MatchString(backupID) {
+		return "", fmt.Errorf("invalid backup id")
+	}
+	base := filepath.Join(filepath.Dir(r.StatePath), "xui-backups")
+	if r.StatePath == "" {
+		base = "/var/lib/vps-agent/xui-backups"
+	}
+	if err := os.MkdirAll(base, 0700); err != nil {
+		return "", fmt.Errorf("create backup directory: %w", err)
+	}
+	return filepath.Join(base, backupID+".db"), nil
 }
 
 func (r *Runner) WarpStatus(ctx context.Context) (model.WarpSnapshot, error) {
@@ -214,6 +234,49 @@ func (r *Runner) Upgrade(ctx context.Context) (model.UpgradeResult, error) {
 	return response, nil
 }
 
+func (r *Runner) InstallWARP(ctx context.Context) (model.WarpSnapshot, error) {
+	if r.DryRun {
+		return model.WarpSnapshot{State: model.WarpOn, IPv4: "198.51.100.10", IPv6: "2001:db8::10"}, nil
+	}
+	var response warpResponse
+	if err := r.callJSON(ctx, []string{"warp", "install"}, &response); err != nil {
+		return model.WarpSnapshot{}, err
+	}
+	state := model.WarpState(response.State)
+	if !state.Valid() {
+		return model.WarpSnapshot{}, &Error{Code: "helper_failed", Message: "helper returned an invalid WARP state"}
+	}
+	return model.WarpSnapshot{State: state, IPv4: response.IPv4, IPv6: response.IPv6}, nil
+}
+
+func (r *Runner) InstallXUI(ctx context.Context) (model.XUISnapshot, error) {
+	if r.DryRun {
+		return model.XUISnapshot{State: model.XUIRunning}, nil
+	}
+	if err := r.call(ctx, []string{"xui", r.Unit, "install"}); err != nil {
+		return model.XUISnapshot{}, err
+	}
+	return r.XUIStatus(ctx)
+}
+
+func (r *Runner) BackupXUI(ctx context.Context, path string) (map[string]any, error) {
+	if r.DryRun {
+		return map[string]any{"path": path, "method": "dry-run", "database": "/etc/x-ui/x-ui.db"}, nil
+	}
+	var response xuiBackupResponse
+	if err := r.callJSON(ctx, []string{"xui", r.Unit, "backup", path}, &response); err != nil {
+		return nil, err
+	}
+	return map[string]any{"path": path, "method": response.Method, "database": response.Database}, nil
+}
+
+func (r *Runner) RestoreXUI(ctx context.Context, path string) error {
+	if r.DryRun {
+		return nil
+	}
+	return r.call(ctx, []string{"xui", r.Unit, "restore", path})
+}
+
 func (r *Runner) NewWatchdog() warpchange.Watchdog {
 	return &watchdog{runner: r}
 }
@@ -248,6 +311,11 @@ type warpResponse struct {
 	State string `json:"state"`
 	IPv4  string `json:"ipv4,omitempty"`
 	IPv6  string `json:"ipv6,omitempty"`
+}
+
+type xuiBackupResponse struct {
+	Method   string `json:"method"`
+	Database string `json:"database"`
 }
 
 type xuiResponse struct {

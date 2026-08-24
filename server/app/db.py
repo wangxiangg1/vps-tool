@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 SCHEMA_MIGRATIONS: dict[int, str] = {
@@ -226,6 +226,21 @@ SCHEMA_MIGRATIONS: dict[int, str] = {
         )
         WHERE row_number > 100
     );
+    """,
+    4: """
+    CREATE TABLE IF NOT EXISTS xui_backups (
+        id TEXT PRIMARY KEY,
+        node_id TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+        filename TEXT NOT NULL,
+        relative_path TEXT NOT NULL UNIQUE,
+        size_bytes INTEGER NOT NULL DEFAULT 0,
+        sha256 TEXT,
+        status TEXT NOT NULL CHECK(status IN ('pending', 'ready')),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_xui_backups_node_created
+        ON xui_backups(node_id, created_at DESC);
     """,
 }
 

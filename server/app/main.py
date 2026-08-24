@@ -7,10 +7,12 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, WebSocket
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .action_service import ActionService, RequestConflictError
 from .actions import SUPPORTED_ACTIONS, ActionRequestBody, ActionValidationError
+from .backups import MAX_BACKUP_BYTES, BackupError, XUIBackupService
 from .config import Settings
 from .db import Database, SCHEMA_VERSION
 from .gateway import ConnectionManager
@@ -59,6 +61,7 @@ def build_app(settings: Settings | None = None) -> FastAPI:
     tasks = TaskService(database, nodes, actions)
     scheduler = Scheduler(database, tasks, selected_settings)
     gateway = ConnectionManager(selected_settings, nodes, actions)
+    backups = XUIBackupService(database, selected_settings, nodes)
     actions.attach_gateway(gateway)
     limiter = LoginRateLimiter()
 
@@ -71,6 +74,7 @@ def build_app(settings: Settings | None = None) -> FastAPI:
         app.state.tasks = tasks
         app.state.scheduler = scheduler
         app.state.gateway = gateway
+        app.state.backups = backups
         await scheduler.start()
         try:
             yield
@@ -165,7 +169,17 @@ def build_app(settings: Settings | None = None) -> FastAPI:
                 {
                     "name": name,
                     "state_changing": name
-                    in {"warp_on", "warp_off", "change_ip", "restart_xui", "upgrade_agent"},
+                    in {
+                        "warp_on",
+                        "warp_off",
+                        "change_ip",
+                        "restart_xui",
+                        "upgrade_agent",
+                        "install_warp",
+                        "install_xui",
+                        "backup_xui",
+                        "restore_xui",
+                    },
                 }
                 for name in SUPPORTED_ACTIONS
             ],
@@ -216,6 +230,58 @@ def build_app(settings: Settings | None = None) -> FastAPI:
         if history is None:
             raise _error(404, "node_not_found", "node was not found")
         return {"history": history, "limit": 100}
+
+    @app.get("/api/nodes/{node_id}/xui-backups")
+    async def list_xui_backups(
+        node_id: str,
+        _: dict[str, Any] = Depends(require_session),
+    ) -> dict[str, Any]:
+        if not nodes.get(node_id):
+            raise _error(404, "node_not_found", "node was not found")
+        return {"backups": backups.list(node_id)}
+
+    @app.post("/api/nodes/{node_id}/xui-backups/prepare")
+    async def prepare_xui_backup(
+        node_id: str,
+        session: dict[str, Any] = Depends(require_csrf),
+    ) -> dict[str, Any]:
+        try:
+            backup = backups.prepare(node_id, _admin_id(session))
+        except BackupError as exc:
+            raise _error(404 if exc.code == "node_not_found" else 422, exc.code, exc.message) from exc
+        database.insert_audit(
+            audit_id=str(uuid.uuid4()),
+            actor_type="admin",
+            actor_id=_admin_id(session),
+            event_type="xui_backup_prepared",
+            node_id=node_id,
+            metadata={"backup_id": backup["id"]},
+            created_at=iso_now(),
+        )
+        return {"backup": backup}
+
+    @app.delete("/api/nodes/{node_id}/xui-backups/{backup_id}")
+    async def delete_xui_backup(
+        node_id: str,
+        backup_id: str,
+        session: dict[str, Any] = Depends(require_csrf),
+    ) -> dict[str, str]:
+        try:
+            deleted = backups.delete(backup_id, node_id)
+        except BackupError as exc:
+            raise _error(422, exc.code, exc.message) from exc
+        if not deleted:
+            raise _error(404, "backup_not_found", "backup was not found")
+        database.insert_audit(
+            audit_id=str(uuid.uuid4()),
+            actor_type="admin",
+            actor_id=_admin_id(session),
+            event_type="xui_backup_deleted",
+            node_id=node_id,
+            metadata={"backup_id": backup_id},
+            created_at=iso_now(),
+        )
+        return {"status": "deleted"}
 
     @app.patch("/api/nodes/{node_id}")
     async def update_node(
@@ -278,6 +344,15 @@ def build_app(settings: Settings | None = None) -> FastAPI:
         body: ActionRequestBody,
         session: dict[str, Any] = Depends(require_csrf),
     ) -> dict[str, Any]:
+        if body.action in {"backup_xui", "restore_xui"}:
+            backup_id = body.parameters.get("backup_id")
+            if not isinstance(backup_id, str) or not backups.get_for_node(backup_id, node_id):
+                raise _error(422, "backup_not_found", "a backup belonging to this node is required")
+            if body.action == "restore_xui":
+                try:
+                    backups.ready_path(backup_id, node_id)
+                except BackupError as exc:
+                    raise _error(422, exc.code, exc.message) from exc
         try:
             request_data = await actions.create_request(
                 node_id=node_id,
@@ -294,6 +369,48 @@ def build_app(settings: Settings | None = None) -> FastAPI:
             code_status = 409 if exc.code in {"action_busy", "request_duplicate"} else 404
             raise _error(code_status, exc.code, exc.message) from exc
         return {"request": request_data}
+
+    def _agent_node(request: Request) -> dict[str, Any]:
+        authorization = request.headers.get("authorization", "")
+        scheme, separator, credential = authorization.partition(" ")
+        node_id = request.headers.get("x-vps-node-id", "").strip()
+        if scheme.lower() != "bearer" or not separator or not credential or not node_id:
+            raise HTTPException(status_code=401, detail="agent_authentication_required")
+        node = nodes.authenticate_credential(node_id, credential.strip())
+        if not node:
+            raise HTTPException(status_code=401, detail="agent_authentication_failed")
+        return node
+
+    @app.put("/api/agent/xui-backups/{backup_id}")
+    async def upload_agent_backup(backup_id: str, request: Request) -> dict[str, Any]:
+        node = _agent_node(request)
+        try:
+            chunks: list[bytes] = []
+            total = 0
+            async for chunk in request.stream():
+                total += len(chunk)
+                if total > MAX_BACKUP_BYTES:
+                    raise BackupError("backup_too_large", "x-ui backup exceeds the 32 MiB limit")
+                chunks.append(chunk)
+            payload = b"".join(chunks)
+            backup = backups.save_bytes(backup_id, node["id"], payload)
+        except BackupError as exc:
+            raise _error(404 if exc.code in {"backup_not_found", "backup_missing"} else 422, exc.code, exc.message) from exc
+        return {"backup": backup}
+
+    @app.get("/api/agent/xui-backups/{backup_id}")
+    async def download_agent_backup(backup_id: str, request: Request) -> Response:
+        node = _agent_node(request)
+        try:
+            backup, path = backups.ready_path(backup_id, node["id"])
+        except BackupError as exc:
+            raise _error(404, exc.code, exc.message) from exc
+        return FileResponse(
+            path,
+            media_type="application/octet-stream",
+            filename=backup["filename"],
+            headers={"X-VPS-Backup-SHA256": backup["sha256"] or ""},
+        )
 
     @app.get("/api/action-requests")
     async def list_action_requests(

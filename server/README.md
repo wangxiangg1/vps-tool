@@ -31,6 +31,7 @@ python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1
 | `VPS_TOOL_ADMIN_USER` | 无 | 首次启动创建的唯一管理员用户名 |
 | `VPS_TOOL_ADMIN_PASSWORD` | 无 | 首次启动创建的管理员密码；12 至 72 UTF-8 字节 |
 | `VPS_TOOL_DB_PATH` | `./data/vps-tool.sqlite3` | SQLite 文件路径 |
+| `VPS_TOOL_BACKUP_DIR` | 数据库目录下的 `backups` | 3x-ui 数据库备份文件目录 |
 | `VPS_TOOL_COOKIE_SECURE` | `true` | Session Cookie 的 `Secure` 属性；本地明文开发可设为 `false` |
 | `VPS_TOOL_SESSION_COOKIE` | `vps_tool_session` | Session Cookie 名称 |
 | `VPS_TOOL_SESSION_TTL_SECONDS` | `28800` | Session 有效期 |
@@ -57,6 +58,9 @@ python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1
 - `POST /api/nodes/{id}/enrollment-token`：吊销旧的未使用 Token 并签发新的 Token。
 - `POST /api/nodes/{id}/credentials/rotate`：吊销旧长期凭据并返回一次新的明文凭据；服务端只保存 SHA-256 哈希。
 - `POST /api/nodes/{id}/credentials/revoke`：吊销长期凭据并断开当前连接。
+- `GET /api/nodes/{id}/xui-backups`：查看该节点的 3x-ui 备份元数据（不返回文件内容）。
+- `POST /api/nodes/{id}/xui-backups/prepare`：为一次 Agent 在线备份签发一次性 `backup_id`。
+- `DELETE /api/nodes/{id}/xui-backups/{backup_id}`：删除控制端保存的备份文件和元数据。
 
 Agent 通过 `ws://host/agent`（生产环境必须使用 `wss://`）发送第一条 `agent_hello`。一次性注册时 payload 使用 `node_id` 和 `registration_token`；已注册 Agent 可在 `Authorization: Bearer ...` 握手头或 hello payload 中使用长期 `credential`。长期凭据不放入 URL 查询参数。
 
@@ -78,7 +82,9 @@ Agent 通过 `ws://host/agent`（生产环境必须使用 `wss://`）发送第�
 }
 ```
 
-允许的 Action 只有：`get_status`、`get_ip`、`warp_on`、`warp_off`、`change_ip`、`restart_xui`。除 `change_ip` 外参数必须为空对象；`change_ip` 只接受 `max_attempts`（1 至 3）和 `timeout_seconds`（30 至 180）。未知字段、命令字符串和未知 Action 会被拒绝。
+允许的 Action 只有：`get_status`、`get_ip`、`warp_on`、`warp_off`、`change_ip`、`restart_xui`、`upgrade_agent`、`install_warp`、`install_xui`、`backup_xui`、`restore_xui`。除 `change_ip`、`backup_xui` 和 `restore_xui` 外参数必须为空对象；备份相关 Action 只接受控制端签发的 `backup_id`。未知字段、命令字符串和未知 Action 会被拒绝。
+
+`install_warp` 固定执行 fscarmen WARP 脚本的双栈、全局模式；`install_xui` 固定执行 MHSanaei/3x-ui 官方安装脚本。`backup_xui` 使用目标机现有 SQLite 数据库在线快照，不停止 x-ui；备份文件只存放在控制端配置的备份目录。`restore_xui` 下载选定备份，保留目标机当前数据库后短暂停止并恢复 x-ui。
 
 节点离线时，默认手动请求返回 `skipped_offline` 和 `node_offline`；明确设置 `queue_if_offline=true` 才会保留为 `queued`，Agent 重连后投递。同一节点同一时刻只能有一个状态变更 Action。
 

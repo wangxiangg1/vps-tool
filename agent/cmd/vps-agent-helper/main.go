@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -56,6 +57,15 @@ var programPaths = map[string][]string{
 	},
 	"wg-quick": {
 		"/usr/bin/wg-quick", "/bin/wg-quick", "/usr/local/bin/wg-quick",
+	},
+	"bash": {
+		"/usr/bin/bash", "/bin/bash",
+	},
+	"cat": {
+		"/usr/bin/cat", "/bin/cat",
+	},
+	"sqlite3": {
+		"/usr/bin/sqlite3", "/bin/sqlite3", "/usr/local/bin/sqlite3",
 	},
 }
 
@@ -122,7 +132,7 @@ func dispatch(ctx context.Context, args []string) error {
 	switch args[0] {
 	case "warp":
 		if len(args) != 3 {
-			return errors.New("usage: warp <adapter> <status|on|off>")
+			return errors.New("usage: warp <adapter> <status|on|off|install>")
 		}
 		return b.warp(ctx, args[1], args[2])
 	case "ip":
@@ -136,10 +146,14 @@ func dispatch(ctx context.Context, args []string) error {
 		}
 		return writeJSON(ipResponse{IPv4: ipv4, IPv6: ipv6})
 	case "xui":
-		if len(args) != 3 {
-			return errors.New("usage: xui <unit> <status|restart>")
+		if len(args) != 3 && len(args) != 4 {
+			return errors.New("usage: xui <unit> <status|restart|install|backup|restore> [path]")
 		}
-		return b.xui(ctx, args[1], args[2])
+		path := ""
+		if len(args) == 4 {
+			path = args[3]
+		}
+		return b.xui(ctx, args[1], args[2], path)
 	case "upgrade":
 		if len(args) != 2 || args[1] != "latest" {
 			return errors.New("usage: upgrade latest")
@@ -167,6 +181,12 @@ func dispatch(ctx context.Context, args []string) error {
 }
 
 func (b broker) warp(ctx context.Context, adapter, operation string) error {
+	if operation == "install" {
+		if adapter != "generic" && adapter != "fixed-helper" {
+			return errors.New("WARP installation only supports the generic adapter")
+		}
+		return b.installWARP(ctx)
+	}
 	backend, err := b.backend(adapter)
 	if err != nil {
 		return err
@@ -300,7 +320,7 @@ func (warpGoBackend) Off(ctx context.Context) error {
 	return serviceAction(ctx, warpGoUnit, "stop")
 }
 
-func (b broker) xui(ctx context.Context, rawUnit, operation string) error {
+func (b broker) xui(ctx context.Context, rawUnit, operation, path string) error {
 	switch operation {
 	case "status":
 		state, err := serviceUnitStateForXUI(ctx, rawUnit)
@@ -310,9 +330,289 @@ func (b broker) xui(ctx context.Context, rawUnit, operation string) error {
 		return writeJSON(xuiResponse{State: state})
 	case "restart":
 		return serviceAction(ctx, rawUnit, "restart")
+	case "install":
+		if err := installXUI(ctx); err != nil {
+			return err
+		}
+		return serviceAction(ctx, rawUnit, "start")
+	case "backup", "restore":
+		return b.xuiDatabase(ctx, rawUnit, operation, path)
 	default:
 		return fmt.Errorf("unsupported x-ui operation %q", operation)
 	}
+}
+
+const (
+	warpInstallURL = "https://gitlab.com/fscarmen/warp/-/raw/main/menu.sh"
+	xuiInstallURL  = "https://raw.githubusercontent.com/MHSanaei/3x-ui/master/install.sh"
+	maxScriptBytes = 1024 * 1024
+)
+
+func (b broker) installWARP(ctx context.Context) error {
+	// fscarmen's d mode asks for language, optionally WireGuard implementation,
+	// global routing, and IP priority. Match the optional prompt instead of
+	// blindly feeding a fixed sequence that could select non-global mode.
+	script, err := downloadFixedScript(ctx, warpInstallURL)
+	if err != nil {
+		return err
+	}
+	defer os.Remove(script)
+	input, err := warpInstallInput(ctx)
+	if err != nil {
+		return err
+	}
+	result, err := runProgramWithInput(ctx, 15*time.Minute, input, "bash", script, "d")
+	if err != nil {
+		return err
+	}
+	if err := requireSuccess(result, "fscarmen WARP install"); err != nil {
+		return err
+	}
+	backend, err := b.autoBackend()
+	if err != nil {
+		return err
+	}
+	state, err := backend.Status(ctx)
+	if err != nil {
+		return err
+	}
+	if state != "on" {
+		return fmt.Errorf("WARP install completed but interface state is %s", state)
+	}
+	return writeJSON(warpResponse{State: state})
+}
+
+func warpInstallInput(ctx context.Context) (string, error) {
+	// The upstream script treats a loaded kernel module plus a usable TUN
+	// device as having both implementations available and asks one extra
+	// question. A TUN device reports "bad state" when read, which is the same
+	// probe used by that script.
+	kernelAvailable := pathExists("/sys/module/wireguard")
+	tunAvailable := false
+	if pathExists("/dev/net/tun") {
+		result, err := runProgramWithInput(ctx, time.Second, "", "cat", "/dev/net/tun")
+		if err != nil {
+			return "", fmt.Errorf("probe TUN device: %w", err)
+		}
+		tunAvailable = strings.Contains(strings.ToLower(string(result.stderr)), "bad state") ||
+			strings.Contains(strings.ToLower(string(result.stdout)), "bad state")
+	}
+	return warpInstallInputForAvailability(kernelAvailable, tunAvailable), nil
+}
+
+func warpInstallInputForAvailability(kernelAvailable, tunAvailable bool) string {
+	if kernelAvailable && tunAvailable {
+		return "2\n1\n1\n3\n"
+	}
+	return "2\n1\n3\n"
+}
+
+func installXUI(ctx context.Context) error {
+	script, err := downloadFixedScript(ctx, xuiInstallURL)
+	if err != nil {
+		return err
+	}
+	defer os.Remove(script)
+	result, err := runProgramWithInputEnv(ctx, 15*time.Minute, "", []string{"XUI_NONINTERACTIVE=1"}, "bash", script)
+	if err != nil {
+		return err
+	}
+	return requireSuccess(result, "MHSanaei 3x-ui install")
+}
+
+func (b broker) xuiDatabase(ctx context.Context, rawUnit, operation, path string) error {
+	if err := validateAgentBackupPath(path); err != nil {
+		return err
+	}
+	database, err := findXUIDatabase()
+	if err != nil {
+		return err
+	}
+	if operation == "backup" {
+		method, err := snapshotXUIDatabase(ctx, database, path)
+		if err != nil {
+			return err
+		}
+		return writeJSON(xuiBackupResponse{Method: method, Database: database})
+	}
+	return restoreXUIDatabase(ctx, rawUnit, database, path)
+}
+
+func validateAgentBackupPath(path string) error {
+	clean := filepath.Clean(path)
+	root := filepath.Clean("/var/lib/vps-agent/xui-backups")
+	if !filepath.IsAbs(path) || clean == root || !strings.HasPrefix(clean, root+string(os.PathSeparator)) || filepath.Base(clean) != strings.TrimSuffix(filepath.Base(clean), ".db")+".db" {
+		return errors.New("backup path is outside the fixed agent backup directory")
+	}
+	return nil
+}
+
+func findXUIDatabase() (string, error) {
+	for _, path := range []string{"/etc/x-ui/x-ui.db", "/etc/v2-ui/v2-ui.db", "/usr/local/x-ui/x-ui.db"} {
+		if info, err := os.Stat(path); err == nil && info.Mode().IsRegular() {
+			return path, nil
+		}
+	}
+	return "", errors.New("MHSanaei 3x-ui SQLite database was not found")
+}
+
+func snapshotXUIDatabase(ctx context.Context, source, destination string) (string, error) {
+	if _, err := findProgram("sqlite3"); err == nil {
+		result, runErr := runProgramWithInput(ctx, commandTimeout, "", "sqlite3", source, ".backup "+destination)
+		if runErr == nil && result.exitCode == 0 {
+			_ = os.Chmod(destination, 0600)
+			return "sqlite3_online_backup", nil
+		}
+	}
+	if err := copyFile(source, destination); err != nil {
+		return "", fmt.Errorf("copy x-ui database without stopping service: %w", err)
+	}
+	return "filesystem_snapshot", nil
+}
+
+func restoreXUIDatabase(ctx context.Context, rawUnit, source, replacement string) error {
+	backup := source + ".before-vps-tool-" + strconv.FormatInt(time.Now().Unix(), 10)
+	if err := copyFile(source, backup); err != nil {
+		return fmt.Errorf("preserve current x-ui database: %w", err)
+	}
+	manager, err := currentServiceManager()
+	if err != nil {
+		return err
+	}
+	if err := serviceAction(ctx, rawUnit, "stop"); err != nil {
+		return err
+	}
+	temporary := source + ".vps-tool-restore.part"
+	if err := copyFile(replacement, temporary); err != nil {
+		_ = serviceAction(ctx, rawUnit, "start")
+		return fmt.Errorf("stage x-ui database: %w", err)
+	}
+	if err := os.Rename(temporary, source); err != nil {
+		_ = os.Remove(temporary)
+		_ = serviceAction(ctx, rawUnit, "start")
+		return fmt.Errorf("replace x-ui database: %w", err)
+	}
+	if err := serviceAction(ctx, rawUnit, "start"); err != nil {
+		_ = copyFile(backup, source)
+		_ = serviceAction(ctx, rawUnit, "start")
+		return fmt.Errorf("start x-ui after restore (%s): %w", manager, err)
+	}
+	_ = os.Remove(backup)
+	return nil
+}
+
+func copyFile(source, destination string) error {
+	input, err := os.Open(source)
+	if err != nil {
+		return err
+	}
+	defer input.Close()
+	if err := os.MkdirAll(filepath.Dir(destination), 0700); err != nil {
+		return err
+	}
+	temporary := destination + ".part"
+	output, err := os.OpenFile(temporary, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
+	if err != nil {
+		return err
+	}
+	_, copyErr := io.Copy(output, input)
+	closeErr := output.Close()
+	if copyErr != nil || closeErr != nil {
+		_ = os.Remove(temporary)
+		if copyErr != nil {
+			return copyErr
+		}
+		return closeErr
+	}
+	if err := os.Rename(temporary, destination); err != nil {
+		_ = os.Remove(temporary)
+		return err
+	}
+	return os.Chmod(destination, 0600)
+}
+
+func downloadFixedScript(ctx context.Context, rawURL string) (string, error) {
+	parsed, err := url.Parse(rawURL)
+	if err != nil || parsed.Scheme != "https" || (parsed.Hostname() != "gitlab.com" && parsed.Hostname() != "raw.githubusercontent.com") {
+		return "", errors.New("fixed installer URL is invalid")
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return "", err
+	}
+	response, err := (&http.Client{Timeout: 30 * time.Second}).Do(request)
+	if err != nil {
+		return "", fmt.Errorf("download fixed installer: %w", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("fixed installer returned HTTP %d", response.StatusCode)
+	}
+	data, err := io.ReadAll(io.LimitReader(response.Body, maxScriptBytes+1))
+	if err != nil {
+		return "", err
+	}
+	if len(data) == 0 || len(data) > maxScriptBytes {
+		return "", errors.New("fixed installer size is invalid")
+	}
+	file, err := os.CreateTemp("", "vps-tool-installer-*.sh")
+	if err != nil {
+		return "", err
+	}
+	path := file.Name()
+	if err := file.Chmod(0700); err != nil {
+		file.Close()
+		_ = os.Remove(path)
+		return "", err
+	}
+	if _, err := file.Write(data); err != nil {
+		file.Close()
+		_ = os.Remove(path)
+		return "", err
+	}
+	if err := file.Close(); err != nil {
+		_ = os.Remove(path)
+		return "", err
+	}
+	return path, nil
+}
+
+func runProgramWithInput(ctx context.Context, timeout time.Duration, input, name string, args ...string) (commandResult, error) {
+	return runProgramWithInputEnv(ctx, timeout, input, nil, name, args...)
+}
+
+func runProgramWithInputEnv(ctx context.Context, timeout time.Duration, input string, environment []string, name string, args ...string) (commandResult, error) {
+	path, err := findProgram(name)
+	if err != nil {
+		return commandResult{}, err
+	}
+	callCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	command := exec.CommandContext(callCtx, path, args...)
+	command.Stdin = bytes.NewBufferString(input)
+	if len(environment) > 0 {
+		command.Env = append(os.Environ(), environment...)
+	}
+	var stdout, stderr limitedBuffer
+	command.Stdout = &stdout
+	command.Stderr = &stderr
+	err = command.Run()
+	if callCtx.Err() != nil {
+		return commandResult{}, fmt.Errorf("%s timed out: %w", name, callCtx.Err())
+	}
+	if stdout.exceeded || stderr.exceeded {
+		return commandResult{}, fmt.Errorf("%s output exceeded the limit", name)
+	}
+	result := commandResult{stdout: stdout.Bytes(), stderr: stderr.Bytes(), exitCode: 0}
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			result.exitCode = exitErr.ExitCode()
+			return result, nil
+		}
+		return commandResult{}, fmt.Errorf("run %s: %w", name, err)
+	}
+	return result, nil
 }
 
 func (b broker) watchdog(ctx context.Context, args []string) error {
@@ -528,6 +828,11 @@ func fileExists(path string) bool {
 	return err == nil && info.Mode().IsRegular()
 }
 
+func pathExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
 func publicIPv4(ctx context.Context) (string, error) {
 	return publicIP(ctx, "https://api.ipify.org", true)
 }
@@ -673,6 +978,11 @@ type warpResponse struct {
 
 type xuiResponse struct {
 	State string `json:"state"`
+}
+
+type xuiBackupResponse struct {
+	Method   string `json:"method"`
+	Database string `json:"database"`
 }
 
 type ipResponse struct {
