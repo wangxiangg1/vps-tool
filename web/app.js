@@ -85,6 +85,7 @@
     restart_alt: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>',
     system_update_alt: '<path d="M12 3v12M7 10l5 5 5-5"/><path d="M5 21h14"/>',
     arrow_forward: '<path d="M5 12h14M13 6l6 6-6 6"/>',
+    history: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/>',
     filter_alt_off: '<path d="M3 3h18l-7 8v6l-4 2v-8Z"/><path d="m2 2 20 20"/>',
     terminal: '<path d="m4 17 6-6-6-6M12 19h8"/>',
   };
@@ -220,10 +221,7 @@
         button.setAttribute("aria-selected", button.dataset.view === view ? "true" : "false");
       }
     });
-    if (view === "detail") {
-      renderNodeDetail();
-      void loadIpHistory(state.activeNodeId);
-    }
+    if (view === "detail") renderNodeDetail();
     if (view === "audit") renderAudit();
     if (view === "tasks") renderTasks();
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -328,7 +326,6 @@
     const diskTotal = Number(node.root_total_bytes || 0);
     const diskPercent = diskTotal ? Math.round(diskUsed * 100 / diskTotal) : 0;
     const recent = state.actions.filter((item) => item.node_id === node.id).slice(0, 8);
-    const history = state.ipHistory[node.id];
     const installed = Boolean(node.agent_version || node.last_seen_at);
     const upgradeSupported = supportsPanelUpgrade(node.agent_version);
     const agentButton = installed
@@ -340,9 +337,9 @@
       <section class="detail-hero"><div class="detail-identity"><span class="detail-node-icon"><span class="material-symbols-outlined" aria-hidden="true">dns</span><i class="${node.online ? "is-online" : ""}"></i></span><div><div class="detail-title-line"><h2>${escapeHtml(node.name)}</h2>${badge(nodeStatus(node))}</div><div class="detail-id">ID: ${escapeHtml(node.id)}</div></div></div><div class="detail-hero-actions"><button class="button button-quiet button-small" data-edit-node="${escapeHtml(node.id)}" type="button"><span class="button-icon material-symbols-outlined" aria-hidden="true">edit</span>编辑节点</button><button class="button button-quiet" data-action="get_status" data-node-id="${escapeHtml(node.id)}" type="button"${!node.online || state.busy.has(node.id) ? " disabled" : ""}><span class="button-icon material-symbols-outlined" aria-hidden="true">sync</span>同步状态</button></div></section>
       <div class="detail-layout"><div class="detail-primary">
         <section class="detail-metric-grid"><div class="metric-card"><div class="metric-card-heading"><span><span class="material-symbols-outlined" aria-hidden="true">memory</span>CPU 使用率</span><strong>${cpu.toFixed(1)}%</strong></div><span class="metric-track"><i style="width:${cpu}%"></i></span></div><div class="metric-card"><div class="metric-card-heading"><span><span class="material-symbols-outlined" aria-hidden="true">developer_board</span>内存使用</span><strong>${formatBytes(memoryUsed)} / ${formatBytes(memoryTotal)}</strong></div><span class="metric-track is-blue"><i style="width:${memoryPercent}%"></i></span></div><div class="metric-card"><div class="metric-card-heading"><span><span class="material-symbols-outlined" aria-hidden="true">hard_drive</span>根分区</span><strong>${diskPercent}%</strong></div><span class="metric-track is-tertiary"><i style="width:${diskPercent}%"></i></span></div></section>
-        <section class="detail-panel node-information"><div class="detail-section-heading"><h3>节点信息</h3><div class="detail-section-actions">${agentButton}<span class="table-meta">最后更新：${escapeHtml(relativeTime(node.last_seen_at))}</span></div></div><dl><div><dt>公共 IPv4</dt><dd>${escapeHtml(node.public_ipv4 || "未采集")}</dd></div><div><dt>公共 IPv6</dt><dd>${escapeHtml(node.public_ipv6 || "未采集")}</dd></div><div><dt>Agent 版本</dt><dd>${escapeHtml(node.agent_version || "—")}</dd></div><div><dt>系统 / 架构</dt><dd>${escapeHtml(`${node.os_name || "—"} ${node.os_version || ""} / ${node.architecture || "—"}`)}</dd></div><div><dt>WARP 接口</dt><dd>${badge(statusValue(node, "warp_status"))}</dd></div><div><dt>3x-ui 服务</dt><dd>${badge(statusValue(node, "xui_status"))} ${escapeHtml(node.xui_service || "x-ui")}</dd></div><div><dt>运行时间</dt><dd>${escapeHtml(formatUptime(node.uptime_seconds))}</dd></div><div><dt>地区</dt><dd>${escapeHtml(node.region || "未设置")}</dd></div></dl></section>
-        <section class="detail-panel ip-history"><div class="detail-section-heading"><h3>出口 IP 历史</h3><span class="table-meta">最多保留 100 条</span></div><div class="ip-history-list">${history === undefined ? `<div class="detail-empty">正在读取历史记录……</div>` : (history.length ? history.map((item) => `<article class="ip-history-item ${item.success ? "is-success" : "is-failed"}"><span class="ip-history-marker" aria-hidden="true"></span><div class="ip-history-addresses"><code>${escapeHtml(item.old_ip || "未知")}</code><span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span><code>${escapeHtml(item.new_ip || "未切换")}</code></div><div class="ip-history-meta"><span>${item.success ? "切换成功" : escapeHtml(item.error_message || item.message || "切换失败")}</span><time>${escapeHtml(formatTime(item.created_at, true))}</time>${item.attempts ? `<small>${escapeHtml(item.attempts)} 次尝试${item.duration_ms ? ` · ${escapeHtml(Math.max(1, Math.round(item.duration_ms / 1000)))} 秒` : ""}</small>` : ""}</div></article>`).join("") : `<div class="detail-empty">暂无 IP 变更记录。</div>`)}</div></section>
         <section class="detail-panel"><div class="detail-section-heading"><h3>快捷操作</h3><span class="table-meta">仅固定 Action 白名单</span></div><div class="quick-action-grid">${actions.map((action) => `<button type="button" class="quick-action${["warp_off", "change_ip", "restart_xui"].includes(action) ? " is-state-changing" : ""}" data-action="${action}" data-node-id="${escapeHtml(node.id)}"${!node.online || state.busy.has(node.id) ? " disabled" : ""}><span class="material-symbols-outlined" aria-hidden="true">${actionIcons[action]}</span><strong>${escapeHtml(actionLabels[action])}</strong><small>${action === "get_status" || action === "get_ip" ? "读取状态" : "记录到审计"}</small></button>`).join("")}</div></section>
+        <section class="detail-panel node-information"><div class="detail-section-heading"><h3>节点信息</h3><div class="detail-section-actions">${agentButton}<span class="table-meta">最后更新：${escapeHtml(relativeTime(node.last_seen_at))}</span></div></div><dl><div><dt>公共 IPv4</dt><dd>${escapeHtml(node.public_ipv4 || "未采集")}</dd></div><div><dt>公共 IPv6</dt><dd>${escapeHtml(node.public_ipv6 || "未采集")}</dd></div><div><dt>Agent 版本</dt><dd>${escapeHtml(node.agent_version || "—")}</dd></div><div><dt>系统 / 架构</dt><dd>${escapeHtml(`${node.os_name || "—"} ${node.os_version || ""} / ${node.architecture || "—"}`)}</dd></div><div><dt>WARP 接口</dt><dd>${badge(statusValue(node, "warp_status"))}</dd></div><div><dt>3x-ui 服务</dt><dd>${badge(statusValue(node, "xui_status"))} ${escapeHtml(node.xui_service || "x-ui")}</dd></div><div><dt>运行时间</dt><dd>${escapeHtml(formatUptime(node.uptime_seconds))}</dd></div><div><dt>地区</dt><dd>${escapeHtml(node.region || "未设置")}</dd></div></dl></section>
+        <section class="detail-panel ip-history-launch-panel"><div class="detail-section-heading"><div><h3>出口 IP 历史</h3><span class="table-meta">最多保留 100 条</span></div><button class="button button-quiet button-small" type="button" data-open-ip-history="${escapeHtml(node.id)}"><span class="button-icon material-symbols-outlined" aria-hidden="true">history</span>查看历史</button></div></section>
       </div><aside class="detail-secondary"><section class="detail-panel recent-operations"><div class="detail-section-heading"><h3>最近操作</h3><button class="text-button" type="button" data-view="audit">查看全部</button></div><div class="timeline">${recent.length ? recent.map((item) => `<div class="timeline-item status-${escapeHtml(item.status)}"><i aria-hidden="true"></i><div><div><strong>${escapeHtml(actionLabels[item.action] || item.action)}</strong><time>${escapeHtml(relativeTime(item.created_at))}</time></div><p>${escapeHtml(item.error_message || (item.result ? "Agent 已返回结果。" : "等待 Agent 回执。"))}</p>${badge(item.status)}</div></div>`).join("") : `<div class="detail-empty">暂无操作记录。</div>`}</div></section><section class="danger-zone"><div><span class="material-symbols-outlined" aria-hidden="true">warning</span><h3>危险操作</h3></div><p>删除节点会吊销凭据、停止关联任务，并从控制平面移除节点。</p><button class="button button-danger button-wide" type="button" data-delete-node="${escapeHtml(node.id)}">删除节点</button></section></aside></div>`;
   }
 
@@ -352,13 +349,39 @@
     return parts[0] > 0 || parts[1] > 3 || (parts[1] === 3 && parts[2] >= 8);
   }
 
+  function renderIpHistoryRows(history, errorMessage) {
+    if (errorMessage) return `<div class="history-empty is-error"><span class="material-symbols-outlined" aria-hidden="true">error</span><div><strong>历史记录读取失败</strong><span>${escapeHtml(errorMessage)}</span></div></div>`;
+    if (history === undefined) return `<div class="history-empty is-loading"><span class="state-spinner" aria-hidden="true"></span><div><strong>正在读取历史记录</strong><span>请稍候。</span></div></div>`;
+    if (!history.length) return `<div class="history-empty"><span class="material-symbols-outlined" aria-hidden="true">history</span><div><strong>暂无 IP 变更记录</strong><span>执行切换出口 IP 后，记录会显示在这里。</span></div></div>`;
+    return `<div class="ip-history-list">${history.map((item) => `<article class="ip-history-item ${item.success ? "is-success" : "is-failed"}"><span class="ip-history-marker" aria-hidden="true"></span><div class="ip-history-addresses"><code>${escapeHtml(item.old_ip || "未知")}</code><span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span><code>${escapeHtml(item.new_ip || "未切换")}</code></div><div class="ip-history-meta"><span>${item.success ? "切换成功" : escapeHtml(item.error_message || item.message || "切换失败")}</span><time>${escapeHtml(formatTime(item.created_at, true))}</time>${item.attempts ? `<small>${escapeHtml(item.attempts)} 次尝试${item.duration_ms ? ` · ${escapeHtml(Math.max(1, Math.round(item.duration_ms / 1000)))} 秒` : ""}</small>` : ""}</div></article>`).join("")}</div>`;
+  }
+
+  function renderIpHistoryDialog(nodeId, errorMessage) {
+    const node = state.nodes.find((item) => item.id === nodeId);
+    if (!node) return;
+    const history = state.ipHistory[nodeId];
+    $("ipHistoryDialogMessage").textContent = node.name;
+    $("ipHistoryDialogContent").classList.toggle("has-history", Boolean(history && history.length));
+    $("ipHistoryDialogContent").innerHTML = renderIpHistoryRows(history, errorMessage);
+    hydrateIcons($("ipHistoryDialogContent"));
+  }
+
+  async function openIpHistory(nodeId) {
+    if (!state.nodes.some((node) => node.id === nodeId)) return;
+    renderIpHistoryDialog(nodeId);
+    openDialog("ipHistoryDialog");
+    await loadIpHistory(nodeId);
+  }
+
   async function loadIpHistory(nodeId) {
     if (!nodeId) return;
     try {
       const response = await api(`/api/nodes/${encodeURIComponent(nodeId)}/ip-history`);
       state.ipHistory[nodeId] = response.history || [];
       if (state.activeView === "detail" && state.activeNodeId === nodeId) renderNodeDetail();
+      if ($("ipHistoryDialog").open) renderIpHistoryDialog(nodeId);
     } catch (error) {
+      if ($("ipHistoryDialog").open) renderIpHistoryDialog(nodeId, error.message);
       notify(`IP 历史读取失败：${error.message}`, "error");
     }
   }
@@ -591,6 +614,11 @@
     }, { title: "批量操作", proceed: "开始批量执行" });
   });
   $("detailContent").addEventListener("click", (event) => {
+    const historyButton = event.target.closest("[data-open-ip-history]");
+    if (historyButton) {
+      void openIpHistory(historyButton.dataset.openIpHistory);
+      return;
+    }
     const edit = event.target.closest("[data-edit-node]");
     if (edit) {
       const node = state.nodes.find((item) => item.id === edit.dataset.editNode);

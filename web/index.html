@@ -341,6 +341,11 @@
         <div class="dialog-actions"><button class="button button-primary" type="button" data-close-dialog="tokenDialog">完成</button></div>
       </dialog>
 
+      <dialog id="ipHistoryDialog" class="history-dialog" aria-labelledby="ipHistoryDialogTitle">
+        <header class="history-dialog-header"><div><h2 id="ipHistoryDialogTitle">出口 IP 历史</h2><p id="ipHistoryDialogMessage" class="history-dialog-node"></p></div><button class="icon-button" type="button" data-close-dialog="ipHistoryDialog" aria-label="关闭出口 IP 历史" title="关闭"><span class="material-symbols-outlined" aria-hidden="true">close</span></button></header>
+        <div id="ipHistoryDialogContent" class="ip-history-dialog-content" aria-live="polite"></div>
+      </dialog>
+
       <dialog id="taskDialog" class="form-dialog" aria-labelledby="taskDialogTitle">
         <form id="taskForm">
           <div class="form-dialog-header"><div><span class="section-kicker">SCHEDULE / ACTION</span><h2 id="taskDialogTitle">新建定时任务</h2></div><button class="icon-button" type="button" data-close-dialog="taskDialog" aria-label="关闭"><span class="material-symbols-outlined" aria-hidden="true">close</span></button></div>
@@ -365,6 +370,6 @@
     <script>
       window.VPS_TOOL_CONFIG = window.VPS_TOOL_CONFIG || {};
     </script>
-    <script src="app.js?v=stitch-20260824-workspace" defer></script>
+    <script src="app.js?v=stitch-20260824-v039" defer></script>
   </body>
 </html>

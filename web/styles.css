@@ -2776,8 +2776,17 @@ textarea:focus-visible {
 }
 
 .ip-history-list {
-  max-height: 430px;
+  max-height: 100%;
   overflow-y: auto;
+}
+
+.ip-history-launch-panel .detail-section-heading > div {
+  display: grid;
+  gap: 4px;
+}
+
+.ip-history-launch-panel .detail-section-heading {
+  min-height: 76px;
 }
 
 .ip-history-item {
@@ -2840,6 +2849,115 @@ textarea:focus-visible {
   color: var(--muted);
   font-family: var(--font-data);
   font-size: 9px;
+}
+
+.history-dialog {
+  position: fixed;
+  inset: 50% auto auto 50%;
+  box-sizing: border-box;
+  width: min(500px, calc(100vw - 32px));
+  max-height: min(460px, calc(100dvh - 32px));
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  color: var(--ink);
+  background: var(--surface-white);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  box-shadow: 0 20px 52px rgba(23, 29, 28, 0.2);
+  transform: translate(-50%, -50%);
+}
+
+.history-dialog::backdrop {
+  background: rgba(23, 29, 28, 0.18);
+}
+
+.history-dialog-header {
+  display: flex;
+  min-height: 78px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px 14px;
+  overflow: hidden;
+  border-bottom: 1px solid var(--line);
+}
+
+.history-dialog-header > div:first-child {
+  min-width: 0;
+}
+
+.history-dialog-header h2 {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 20px;
+  line-height: 1.15;
+}
+
+.history-dialog-node {
+  margin: 5px 0 0;
+  overflow: hidden;
+  color: var(--ink-soft);
+  font-family: var(--font-data);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ip-history-dialog-content {
+  max-height: min(360px, calc(100dvh - 110px));
+  overflow-y: auto;
+}
+
+.history-empty {
+  display: grid;
+  min-height: 76px;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  margin: 20px;
+  padding: 14px 0;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+}
+
+.history-empty > .ui-icon,
+.history-empty > .state-spinner {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  color: var(--primary);
+  background: var(--surface-low);
+  border-radius: var(--radius-sm);
+}
+
+.history-empty > .ui-icon {
+  font-size: 20px;
+}
+
+.history-empty strong,
+.history-empty span:last-child {
+  display: block;
+}
+
+.history-empty strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.history-empty span:last-child {
+  margin-top: 3px;
+  font-size: 11px;
+}
+
+.history-empty.is-error > .ui-icon {
+  color: var(--error);
+}
+
+.ip-history-dialog-content .ip-history-list {
+  max-height: none;
 }
 
 .quick-action-grid {
@@ -3458,6 +3576,26 @@ textarea:focus-visible {
 }
 
 @media (max-width: 560px) {
+  .history-dialog {
+    inset: 50% auto auto 50%;
+    width: calc(100% - 24px);
+    max-height: min(420px, calc(100dvh - 24px));
+    border-radius: var(--radius-md);
+  }
+
+  .history-dialog-header {
+    min-height: 74px;
+    padding: 16px;
+  }
+
+  .history-dialog-header h2 {
+    font-size: 20px;
+  }
+
+  .ip-history-dialog-content {
+    max-height: calc(100dvh - 98px);
+  }
+
   .detail-view-heading {
     margin-bottom: 16px;
   }
