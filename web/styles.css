@@ -2775,6 +2775,73 @@ textarea:focus-visible {
   font-size: 12px;
 }
 
+.ip-history-list {
+  max-height: 430px;
+  overflow-y: auto;
+}
+
+.ip-history-item {
+  display: grid;
+  min-height: 74px;
+  align-items: center;
+  grid-template-columns: 10px minmax(0, 1fr) minmax(150px, 0.55fr);
+  gap: 14px;
+  padding: 13px 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.ip-history-item:last-child {
+  border-bottom: 0;
+}
+
+.ip-history-marker {
+  width: 8px;
+  height: 8px;
+  background: var(--primary);
+  border-radius: 50%;
+}
+
+.ip-history-item.is-failed .ip-history-marker {
+  background: var(--error);
+}
+
+.ip-history-addresses {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.ip-history-addresses code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-family: var(--font-data);
+  font-size: 11px;
+}
+
+.ip-history-addresses .ui-icon {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.ip-history-meta {
+  display: grid;
+  justify-items: end;
+  gap: 3px;
+  color: var(--ink-soft);
+  font-size: 10px;
+  text-align: right;
+}
+
+.ip-history-meta time,
+.ip-history-meta small {
+  color: var(--muted);
+  font-family: var(--font-data);
+  font-size: 9px;
+}
+
 .quick-action-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -3431,6 +3498,22 @@ textarea:focus-visible {
   .node-information dl > div {
     grid-template-columns: 1fr;
     gap: 5px;
+  }
+
+  .ip-history-item {
+    align-items: start;
+    grid-template-columns: 8px minmax(0, 1fr);
+  }
+
+  .ip-history-addresses {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .ip-history-meta {
+    grid-column: 2;
+    justify-items: start;
+    text-align: left;
   }
 
   .audit-summary {

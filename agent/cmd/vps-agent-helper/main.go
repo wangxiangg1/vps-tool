@@ -18,9 +18,14 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"vps-tool/agent/internal/config"
 )
 
+var version = config.DefaultVersion
+
 const (
+	defaultAgentPath  = "/usr/local/bin/vps-agent"
 	defaultHelperPath = "/usr/local/libexec/vps-agent-helper"
 	maxCommandOutput  = 16 * 1024
 	commandTimeout    = 20 * time.Second
@@ -135,6 +140,16 @@ func dispatch(ctx context.Context, args []string) error {
 			return errors.New("usage: xui <unit> <status|restart>")
 		}
 		return b.xui(ctx, args[1], args[2])
+	case "upgrade":
+		if len(args) != 2 || args[1] != "latest" {
+			return errors.New("usage: upgrade latest")
+		}
+		return b.upgrade(ctx)
+	case "upgrade-restart":
+		if len(args) != 1 {
+			return errors.New("usage: upgrade-restart")
+		}
+		return b.restartAfterUpgrade(ctx)
 	case "watchdog":
 		return b.watchdog(ctx, args[1:])
 	case "watchdog-run":

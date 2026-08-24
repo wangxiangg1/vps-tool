@@ -1,5 +1,11 @@
 package model
 
+type UpgradeResult struct {
+	Version          string `json:"version"`
+	Changed          bool   `json:"changed"`
+	RestartScheduled bool   `json:"restart_scheduled"`
+}
+
 // WarpState is the normalized state reported by a supported WARP adapter.
 type WarpState string
 

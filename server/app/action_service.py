@@ -116,7 +116,7 @@ class ActionService:
                 busy = connection.execute(
                     """
                     SELECT id, status FROM action_requests
-                    WHERE node_id = ? AND action IN (?, ?, ?, ?)
+                    WHERE node_id = ? AND action IN (?, ?, ?, ?, ?)
                       AND status IN (?, ?, ?, ?, ?)
                     ORDER BY created_at DESC LIMIT 1
                     """,
@@ -372,7 +372,14 @@ class ActionService:
                 ),
             )
         if row["action"] == "change_ip":
-            self.nodes.record_ip_change(node_id, result, success)
+            self.nodes.record_ip_change(
+                node_id,
+                request_id,
+                result,
+                success,
+                error_code,
+                error_message,
+            )
 
     def expire_requests(self) -> None:
         now = iso_now()
@@ -408,4 +415,3 @@ class ActionService:
             """,
             (status, code, "Request deadline elapsed", now, now, request_id),
         )
-

@@ -28,12 +28,13 @@ const (
 )
 
 var actionSet = map[string]bool{
-	"get_status":  false,
-	"get_ip":      false,
-	"warp_on":     true,
-	"warp_off":    true,
-	"change_ip":   true,
-	"restart_xui": true,
+	"get_status":    false,
+	"get_ip":        false,
+	"warp_on":       true,
+	"warp_off":      true,
+	"change_ip":     true,
+	"restart_xui":   true,
+	"upgrade_agent": true,
 }
 
 type Envelope struct {
@@ -142,7 +143,7 @@ func DecodeCommand(envelope Envelope) (Command, error) {
 func IsStateChanging(action string) bool { return actionSet[action] }
 
 func Actions() []string {
-	return []string{"get_status", "get_ip", "warp_on", "warp_off", "change_ip", "restart_xui"}
+	return []string{"get_status", "get_ip", "warp_on", "warp_off", "change_ip", "restart_xui", "upgrade_agent"}
 }
 
 func ValidateCommand(command Command, expectedNodeID string, now time.Time) error {

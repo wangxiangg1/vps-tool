@@ -57,6 +57,7 @@ jobs:
           PYTHONPATH: server
         run: |
           python -m compileall -q server
+          python -m unittest discover -s server/tests -p "test_*.py"
           python -c "from app.main import app; print(app.title)"
 
       - name: Verify frontend JavaScript

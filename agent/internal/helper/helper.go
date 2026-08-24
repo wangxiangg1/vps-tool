@@ -24,6 +24,7 @@ import (
 const (
 	maxOutputBytes       = 16 * 1024
 	defaultHelperTimeout = 20 * time.Second
+	upgradeHelperTimeout = 150 * time.Second
 )
 
 var supportedAdapters = map[string]struct{}{
@@ -199,6 +200,20 @@ func (r *Runner) RestartXUI(ctx context.Context) error {
 	return r.call(ctx, []string{"xui", r.Unit, "restart"})
 }
 
+func (r *Runner) Upgrade(ctx context.Context) (model.UpgradeResult, error) {
+	if r.DryRun {
+		return model.UpgradeResult{Version: "dry-run", Changed: false, RestartScheduled: false}, nil
+	}
+	var response model.UpgradeResult
+	if err := r.callJSONWithTimeout(ctx, []string{"upgrade", "latest"}, &response, upgradeHelperTimeout); err != nil {
+		return model.UpgradeResult{}, err
+	}
+	if response.Version == "" {
+		return model.UpgradeResult{}, &Error{Code: "helper_failed", Message: "helper returned an empty release version"}
+	}
+	return response, nil
+}
+
 func (r *Runner) NewWatchdog() warpchange.Watchdog {
 	return &watchdog{runner: r}
 }
@@ -240,7 +255,11 @@ type xuiResponse struct {
 }
 
 func (r *Runner) callJSON(ctx context.Context, args []string, target any) error {
-	data, err := r.callOutput(ctx, args)
+	return r.callJSONWithTimeout(ctx, args, target, r.Timeout)
+}
+
+func (r *Runner) callJSONWithTimeout(ctx context.Context, args []string, target any, timeout time.Duration) error {
+	data, err := r.callOutputWithTimeout(ctx, args, timeout)
 	if err != nil {
 		return err
 	}
@@ -262,6 +281,10 @@ func (r *Runner) call(ctx context.Context, args []string) error {
 }
 
 func (r *Runner) callOutput(ctx context.Context, args []string) ([]byte, error) {
+	return r.callOutputWithTimeout(ctx, args, r.Timeout)
+}
+
+func (r *Runner) callOutputWithTimeout(ctx context.Context, args []string, timeout time.Duration) ([]byte, error) {
 	if r.DryRun {
 		return []byte(`{"state":"running"}`), nil
 	}
@@ -271,7 +294,6 @@ func (r *Runner) callOutput(ctx context.Context, args []string) ([]byte, error) 
 	if err := validateExecutable(r.Path); err != nil {
 		return nil, err
 	}
-	timeout := r.Timeout
 	if timeout <= 0 {
 		timeout = defaultHelperTimeout
 	}

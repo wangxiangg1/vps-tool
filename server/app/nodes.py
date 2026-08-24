@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ipaddress
 import json
 import re
 import uuid
@@ -476,19 +477,95 @@ class NodeService:
                 tuple(params),
             )
 
-    def record_ip_change(self, node_id: str, result: dict[str, Any], success: bool) -> None:
+    def list_ip_changes(self, node_id: str, limit: int = 100) -> list[dict[str, Any]] | None:
+        if not self.get(node_id):
+            return None
+        bounded_limit = max(1, min(limit, 100))
+        rows = self.db.fetchall(
+            """
+            SELECT id, request_id, success, error_code, error_message, result_json, created_at
+            FROM ip_change_history
+            WHERE node_id = ?
+            ORDER BY created_at DESC, id DESC
+            LIMIT ?
+            """,
+            (node_id, bounded_limit),
+        )
+        history: list[dict[str, Any]] = []
+        for row in rows:
+            item = dict(row)
+            result = _decode_json(item.pop("result_json", "{}"), {})
+            item["success"] = bool(item["success"])
+            item["old_ip"] = result.get("old_ip")
+            item["new_ip"] = result.get("new_ip")
+            item["attempts"] = result.get("attempts")
+            item["final_warp_state"] = result.get("final_warp_state")
+            item["duration_ms"] = result.get("duration_ms")
+            item["message"] = result.get("message") or item.get("error_message")
+            history.append(item)
+        return history
+
+    def record_ip_change(
+        self,
+        node_id: str,
+        request_id: str,
+        result: dict[str, Any],
+        success: bool,
+        error_code: str | None = None,
+        error_message: str | None = None,
+    ) -> None:
         now = iso_now()
+        result_text = json.dumps(result, separators=(",", ":"), ensure_ascii=True)
+        ip_column: str | None = None
+        new_ip = result.get("new_ip")
+        if success and isinstance(new_ip, str):
+            try:
+                ip_column = "public_ipv6" if ipaddress.ip_address(new_ip).version == 6 else "public_ipv4"
+            except ValueError:
+                ip_column = None
         with self.db.transaction(immediate=True) as connection:
             connection.execute(
                 """
-                UPDATE nodes
-                SET last_ip_change_at = ?, last_ip_change_result_json = ?, updated_at = ?
-                WHERE id = ? AND deleted_at IS NULL
+                INSERT OR IGNORE INTO ip_change_history
+                  (id, node_id, request_id, success, error_code, error_message, result_json, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    now,
-                    json.dumps({"success": success, **result}, separators=(",", ":"), ensure_ascii=True),
-                    now,
+                    str(uuid.uuid4()),
                     node_id,
+                    request_id,
+                    int(success),
+                    None if success else error_code,
+                    None if success else error_message,
+                    result_text,
+                    now,
                 ),
+            )
+            ip_update = f", {ip_column} = ?" if ip_column else ""
+            params: list[Any] = [
+                now,
+                json.dumps({"success": success, **result}, separators=(",", ":"), ensure_ascii=True),
+            ]
+            if ip_column:
+                params.append(new_ip)
+            params.extend([now, node_id])
+            connection.execute(
+                f"""
+                UPDATE nodes
+                SET last_ip_change_at = ?, last_ip_change_result_json = ?{ip_update}, updated_at = ?
+                WHERE id = ? AND deleted_at IS NULL
+                """,
+                tuple(params),
+            )
+            connection.execute(
+                """
+                DELETE FROM ip_change_history
+                WHERE node_id = ? AND id NOT IN (
+                    SELECT id FROM ip_change_history
+                    WHERE node_id = ?
+                    ORDER BY created_at DESC, id DESC
+                    LIMIT 100
+                )
+                """,
+                (node_id, node_id),
             )

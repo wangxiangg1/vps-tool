@@ -30,20 +30,32 @@ type Executor struct {
 	nodeID    string
 	manager   *warp.Manager
 	collector *status.FullCollector
-	journal   *journal.Journal
-	stateMu   sync.Mutex
-	activeMu  sync.Mutex
-	active    map[string]struct{}
+	upgrader  interface {
+		Upgrade(context.Context) (model.UpgradeResult, error)
+	}
+	journal  *journal.Journal
+	stateMu  sync.Mutex
+	activeMu sync.Mutex
+	active   map[string]struct{}
 }
 
-func NewExecutor(nodeID string, manager *warp.Manager, collector *status.FullCollector, requestJournal *journal.Journal) (*Executor, error) {
-	if nodeID == "" || manager == nil || collector == nil || requestJournal == nil {
+func NewExecutor(
+	nodeID string,
+	manager *warp.Manager,
+	collector *status.FullCollector,
+	upgrader interface {
+		Upgrade(context.Context) (model.UpgradeResult, error)
+	},
+	requestJournal *journal.Journal,
+) (*Executor, error) {
+	if nodeID == "" || manager == nil || collector == nil || upgrader == nil || requestJournal == nil {
 		return nil, fmt.Errorf("action executor dependencies are incomplete")
 	}
 	return &Executor{
 		nodeID:    nodeID,
 		manager:   manager,
 		collector: collector,
+		upgrader:  upgrader,
 		journal:   requestJournal,
 		active:    make(map[string]struct{}),
 	}, nil
@@ -193,6 +205,8 @@ func (e *Executor) execute(ctx context.Context, command protocol.Command) Result
 		var before, after model.XUISnapshot
 		before, after, err = e.manager.RestartXUI(ctx)
 		payload = map[string]any{"before": before, "after": after}
+	case "upgrade_agent":
+		payload, err = e.upgrader.Upgrade(ctx)
 	default:
 		err = &executorError{code: "unsupported_action", message: "action is not supported by this agent"}
 	}

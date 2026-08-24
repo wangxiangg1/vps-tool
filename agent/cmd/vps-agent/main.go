@@ -66,7 +66,7 @@ func main() {
 		log.Fatalf("initialize action manager: %v", err)
 	}
 	collector := status.NewFullCollector(cfg.NodeID, cfg.AgentVersion, manager)
-	executor, err := action.NewExecutor(cfg.NodeID, manager, collector, requestJournal)
+	executor, err := action.NewExecutor(cfg.NodeID, manager, collector, runner, requestJournal)
 	if err != nil {
 		log.Fatalf("initialize action executor: %v", err)
 	}

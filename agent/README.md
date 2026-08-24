@@ -224,7 +224,7 @@ identity-checked child process described above.
 ## Actions and state
 
 Only these actions are accepted: `get_status`, `get_ip`, `warp_on`, `warp_off`,
-`change_ip`, and `restart_xui`. Parameters are strict JSON objects with no
+`change_ip`, `restart_xui`, and `upgrade_agent`. Parameters are strict JSON objects with no
 unknown fields. Same-node state-changing actions are serialized; status
 collection can run concurrently. Duplicate `request_id` values return the
 persisted terminal result and never execute a second time.
@@ -235,6 +235,13 @@ three stop/start attempts, compares the new IP, and always attempts to leave
 WARP ON even after a failure or WSS disconnect. The terminal result records the
 stage-specific code, attempt count, old/new IP, final WARP state, and recovery
 errors.
+
+`upgrade_agent` is a fixed Helper operation, not a shell or URL parameter. It
+resolves the latest numeric version from `wangxiangg1/vps-tool`, accepts only
+the matching Linux amd64/arm64 release assets, verifies both binaries against
+the release `SHA256SUMS`, rejects downgrades, and atomically replaces the Agent
+and Helper with rollback copies. A detached fixed Helper process restarts only
+the `vps-agent` service after the terminal result has been persisted.
 
 The request journal is a bounded JSON file (256 entries/512 KiB in the binary)
 with atomic replacement and mode `0600`. It is loaded at startup, so recent
@@ -248,4 +255,5 @@ Production WSS TLS certificate verification is mandatory. URLs with embedded
 credentials, queries, or fragments are rejected. Unknown protocol versions,
 message fields, actions, parameters, unit names, helper paths, and helper JSON
 fields fail closed. No remote shell, script upload, arbitrary file read/write,
-systemd argument forwarding, or dynamic executable loading is exposed.
+systemd argument forwarding, user-supplied download URL, or user-supplied
+executable loading is exposed.

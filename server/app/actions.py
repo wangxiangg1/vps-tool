@@ -12,9 +12,12 @@ SUPPORTED_ACTIONS = (
     "warp_off",
     "change_ip",
     "restart_xui",
+    "upgrade_agent",
 )
-STATE_CHANGING_ACTIONS = frozenset({"warp_on", "warp_off", "change_ip", "restart_xui"})
-SCHEDULED_ACTIONS = STATE_CHANGING_ACTIONS
+STATE_CHANGING_ACTIONS = frozenset(
+    {"warp_on", "warp_off", "change_ip", "restart_xui", "upgrade_agent"}
+)
+SCHEDULED_ACTIONS = frozenset({"warp_on", "warp_off", "change_ip", "restart_xui"})
 
 
 class StrictModel(BaseModel):
@@ -37,6 +40,7 @@ ACTION_PARAMETER_MODELS: dict[str, Type[BaseModel]] = {
     "warp_off": EmptyParameters,
     "change_ip": ChangeIpParameters,
     "restart_xui": EmptyParameters,
+    "upgrade_agent": EmptyParameters,
 }
 
 

@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 SCHEMA_MIGRATIONS: dict[int, str] = {
@@ -192,6 +192,40 @@ SCHEMA_MIGRATIONS: dict[int, str] = {
         updated_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_scheduler_leases_until ON scheduler_leases(lease_until);
+    """,
+    3: """
+    CREATE TABLE IF NOT EXISTS ip_change_history (
+        id TEXT PRIMARY KEY,
+        node_id TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+        request_id TEXT NOT NULL UNIQUE REFERENCES action_requests(id) ON DELETE CASCADE,
+        success INTEGER NOT NULL CHECK(success IN (0, 1)),
+        error_code TEXT,
+        error_message TEXT,
+        result_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_ip_change_history_node_created
+        ON ip_change_history(node_id, created_at DESC);
+
+    INSERT OR IGNORE INTO ip_change_history
+      (id, node_id, request_id, success, error_code, error_message, result_json, created_at)
+    SELECT id, node_id, id, CASE WHEN status = 'succeeded' THEN 1 ELSE 0 END,
+           error_code, error_message, COALESCE(result_json, '{}'),
+           COALESCE(finished_at, updated_at, created_at)
+    FROM action_requests
+    WHERE action = 'change_ip' AND status IN ('succeeded', 'failed');
+
+    DELETE FROM ip_change_history
+    WHERE id IN (
+        SELECT id FROM (
+            SELECT id,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY node_id ORDER BY created_at DESC, id DESC
+                   ) AS row_number
+            FROM ip_change_history
+        )
+        WHERE row_number > 100
+    );
     """,
 }
 

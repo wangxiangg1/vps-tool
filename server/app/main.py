@@ -164,7 +164,8 @@ def build_app(settings: Settings | None = None) -> FastAPI:
             "actions": [
                 {
                     "name": name,
-                    "state_changing": name in {"warp_on", "warp_off", "change_ip", "restart_xui"},
+                    "state_changing": name
+                    in {"warp_on", "warp_off", "change_ip", "restart_xui", "upgrade_agent"},
                 }
                 for name in SUPPORTED_ACTIONS
             ],
@@ -205,6 +206,16 @@ def build_app(settings: Settings | None = None) -> FastAPI:
             raise _error(404, "node_not_found", "node was not found")
         node["online"] = gateway.is_online(node_id)
         return {"node": node}
+
+    @app.get("/api/nodes/{node_id}/ip-history")
+    async def get_node_ip_history(
+        node_id: str,
+        _: dict[str, Any] = Depends(require_session),
+    ) -> dict[str, Any]:
+        history = nodes.list_ip_changes(node_id, limit=100)
+        if history is None:
+            raise _error(404, "node_not_found", "node was not found")
+        return {"history": history, "limit": 100}
 
     @app.patch("/api/nodes/{node_id}")
     async def update_node(
