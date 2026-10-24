@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import tempfile
 import unittest
 import uuid
 from pathlib import Path
@@ -12,7 +13,8 @@ from app.timeutil import iso_now
 
 class IPHistoryTest(unittest.TestCase):
     def setUp(self) -> None:
-        path = Path("server/data") / f"history-test-{uuid.uuid4()}.sqlite3"
+        self._tmpdir = tempfile.TemporaryDirectory(prefix="vps-tool-history-test-", ignore_cleanup_errors=True)
+        path = Path(self._tmpdir.name) / f"history-test-{uuid.uuid4()}.sqlite3"
         path.parent.mkdir(parents=True, exist_ok=True)
         self.database_path = path
         self.database = Database(path)
@@ -32,6 +34,7 @@ class IPHistoryTest(unittest.TestCase):
     def tearDown(self) -> None:
         for suffix in ("", "-wal", "-shm"):
             (Path(str(self.database_path) + suffix)).unlink(missing_ok=True)
+        self._tmpdir.cleanup()
 
     def test_schema_and_history_retention(self) -> None:
         self.assertEqual(self.database.fetchone("PRAGMA user_version")[0], SCHEMA_VERSION)

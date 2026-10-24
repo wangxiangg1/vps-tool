@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import tempfile
 import unittest
 import uuid
 from pathlib import Path
@@ -13,7 +14,8 @@ from app.nodes import NodeService
 
 class XUIBackupTest(unittest.TestCase):
     def setUp(self) -> None:
-        root = Path("server/data")
+        self._tmpdir = tempfile.TemporaryDirectory(prefix="vps-tool-backup-test-", ignore_cleanup_errors=True)
+        root = Path(self._tmpdir.name)
         self.database_path = root / f"backup-test-{uuid.uuid4()}.sqlite3"
         self.backup_dir = root / f"backup-files-{uuid.uuid4()}"
         self.database = Database(self.database_path)
@@ -45,6 +47,7 @@ class XUIBackupTest(unittest.TestCase):
             elif path.is_dir():
                 path.rmdir()
         self.backup_dir.rmdir() if self.backup_dir.exists() else None
+        self._tmpdir.cleanup()
 
     def test_online_upload_metadata_and_delete(self) -> None:
         pending = self.backups.prepare(self.node["id"])

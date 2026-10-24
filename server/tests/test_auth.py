@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import tempfile
 import unittest
 import uuid
 from pathlib import Path
@@ -19,7 +20,8 @@ from app.security import authenticate_admin, create_session, ensure_admin, get_s
 
 class PasswordChangeTest(unittest.TestCase):
     def setUp(self) -> None:
-        self.database_path = Path("server/data") / f"auth-test-{uuid.uuid4()}.sqlite3"
+        self._tmpdir = tempfile.TemporaryDirectory(prefix="vps-tool-auth-test-", ignore_cleanup_errors=True)
+        self.database_path = Path(self._tmpdir.name) / f"auth-test-{uuid.uuid4()}.sqlite3"
         self.settings = Settings(
             db_path=self.database_path,
             admin_user="admin",
@@ -34,6 +36,7 @@ class PasswordChangeTest(unittest.TestCase):
     def tearDown(self) -> None:
         for suffix in ("", "-wal", "-shm"):
             (Path(str(self.database_path) + suffix)).unlink(missing_ok=True)
+        self._tmpdir.cleanup()
 
     def test_change_password_invalidates_sessions(self) -> None:
         admin = self.database.fetchone("SELECT id FROM users WHERE username = ?", ("admin",))
