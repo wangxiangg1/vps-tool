@@ -18,6 +18,8 @@ venv/
 agent/.gocache*/
 agent/smoke-journal.json
 dist/
+control-plane/.tmp-*
+control-plane/vps-server*
 
 # Local configuration and secrets
 .env

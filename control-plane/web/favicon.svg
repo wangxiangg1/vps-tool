@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <filter id="soft-shadow" x="-10%" y="-10%" width="120%" height="125%">
+      <feDropShadow dx="0" dy="1.5" stdDeviation="1.5" flood-color="#171d1c" flood-opacity="0.08" />
+    </filter>
+  </defs>
+  <!-- 背景卡片 -->
+  <rect x="3" y="3" width="58" height="58" rx="10" ry="10" fill="#ffffff" stroke="#00685f" stroke-opacity="0.10" stroke-width="1.5" filter="url(#soft-shadow)" />
+  <!-- 三根品牌柱条 -->
+  <rect x="17.5" y="34" width="7" height="14" rx="2.5" fill="#00685f" opacity="0.52" />
+  <rect x="28.5" y="25" width="7" height="23" rx="2.5" fill="#00685f" opacity="0.76" />
+  <rect x="39.5" y="16" width="7" height="32" rx="2.5" fill="#00685f" opacity="1.00" />
+</svg>

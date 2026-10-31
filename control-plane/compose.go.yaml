@@ -1,0 +1,5 @@
+services:
+  control-plane:
+    image: ${VPS_TOOL_GO_IMAGE:-ghcr.io/wangxiangg1/vps-tool:go-candidate}
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/vps-server", "-health"]

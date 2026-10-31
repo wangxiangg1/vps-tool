@@ -4,6 +4,7 @@ on:
   push:
     branches: [master, main]
   pull_request:
+  workflow_call:
 
 permissions:
   contents: read
@@ -78,6 +79,31 @@ jobs:
           CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /tmp/vps-agent ./cmd/vps-agent
           CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /tmp/vps-agent-helper ./cmd/vps-agent-helper
 
+      - name: Verify Go control plane
+        working-directory: control-plane
+        env:
+          VPS_TOOL_ADMIN_USER: ci-admin
+          VPS_TOOL_ADMIN_PASSWORD: ci-password-123456
+          VPS_TOOL_COOKIE_SECURE: "false"
+          VPS_TOOL_DB_PATH: /tmp/vps-tool-control-plane.sqlite3
+          VPS_TOOL_AGENT_BINARY: /tmp/vps-agent
+        run: |
+          diff -rq ../web web
+          gofmt -l -d cmd internal | tee /tmp/control-plane-gofmt
+          test ! -s /tmp/control-plane-gofmt
+          go test ./...
+          go test -race ./...
+          go vet ./...
+          CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -buildid=" -o /tmp/vps-server ./cmd/vps-server
+          /tmp/vps-server &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true; wait "$server_pid" || true' EXIT
+          for attempt in $(seq 1 30); do
+            if /tmp/vps-server -health; then exit 0; fi
+            sleep 1
+          done
+          exit 1
+
   container:
     runs-on: ubuntu-latest
     steps:
@@ -93,6 +119,9 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
       - name: Build control-plane image
         uses: docker/build-push-action@v6
         with:
@@ -102,3 +131,14 @@ jobs:
           push: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Build Go control-plane candidate for both architectures
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: control-plane/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          tags: vps-tool/control-plane-go:ci
+          push: false
+          cache-from: type=gha,scope=control-plane-go
+          cache-to: type=gha,scope=control-plane-go,mode=max

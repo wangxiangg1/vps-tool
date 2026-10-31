@@ -1,12 +1,14 @@
 # vps-tool
 
 Secure, lightweight VPS control plane with a FastAPI server, a low-memory Go
-Agent, and a static operations console.
+Agent, and a static operations console. An experimental Go control-plane
+replacement is under `control-plane/`; it is not yet ready for production.
 
 ## Repository layout
 
-- `server/`: FastAPI control plane, SQLite persistence, authentication, task
-  scheduler, and Agent WebSocket gateway.
+- `server/`: current FastAPI control plane.
+- `control-plane/`: Go control-plane migration in progress. Do not use it with
+  production data until API, Agent protocol, scheduler, and migration tests pass.
 - `agent/`: Go Agent for Linux VPS nodes. It reports status and executes only
   the fixed Action allowlist; it never accepts remote shell text.
 - `web/`: no-build browser console served by the control plane.
@@ -15,8 +17,16 @@ Agent, and a static operations console.
 
 ## Local verification
 
-Server prerequisites are Python 3.11+ and the dependencies in
-`server/requirements.txt`. Agent prerequisites are Go 1.23+.
+The legacy server requires Python 3.11+ and `server/requirements.txt`. The Go
+control plane requires Go 1.23+.
+
+```powershell
+cd control-plane
+$env:GOPROXY = "https://goproxy.cn,direct" # optional in restricted networks
+go test ./...
+$env:CGO_ENABLED = "0"
+go build -trimpath -ldflags "-s -w -buildid=" ./cmd/vps-server
+```
 
 ```powershell
 python -m pip install -r server/requirements.txt
