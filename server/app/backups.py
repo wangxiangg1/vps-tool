@@ -50,7 +50,9 @@ class XUIBackupService:
         backup_id = str(uuid.uuid4())
         now = iso_now()
         relative_path = f"{node_id}/{backup_id}.db"
-        filename = f"{_safe_name(node['name'])}_{now.replace(':', '').replace('Z', '')}_x-ui.db"
+        is_xray = (node.get("xui_service") or "").removesuffix(".service") == "xray"
+        suffix = "xray-config.tar.gz" if is_xray else "x-ui.db"
+        filename = f"{_safe_name(node['name'])}_{now.replace(':', '').replace('Z', '')}_{suffix}"
         self.db.execute(
             """
             INSERT INTO xui_backups

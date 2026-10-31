@@ -387,6 +387,11 @@ def build_app(settings: Settings | None = None) -> FastAPI:
         body: ActionRequestBody,
         session: dict[str, Any] = Depends(require_csrf),
     ) -> dict[str, Any]:
+        node = nodes.get(node_id)
+        if not node:
+            raise _error(404, "node_not_found", "node was not found")
+        if body.action == "install_xui" and (node.get("xui_service") or "").removesuffix(".service") == "xray":
+            raise _error(400, "unsupported_for_xray", "3x-ui installation is not supported on xray nodes")
         if body.action in {"backup_xui", "restore_xui"}:
             backup_id = body.parameters.get("backup_id")
             if not isinstance(backup_id, str) or not backups.get_for_node(backup_id, node_id):

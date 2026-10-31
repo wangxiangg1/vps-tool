@@ -66,6 +66,20 @@ class XUIBackupTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.backups.ready_path(pending["id"], self.node["id"])
 
+    def test_xray_backup_filename(self) -> None:
+        xray_node, _, _ = self.nodes.create(
+            name="US-Xray-Node",
+            region="US",
+            tags=[],
+            warp_adapter="generic",
+            xui_service="xray",
+            notes="",
+            actor_id=None,
+        )
+        pending = self.backups.prepare(xray_node["id"])
+        self.assertTrue(pending["filename"].endswith("_xray-config.tar.gz"))
+        self.assertTrue(pending["relative_path"].endswith(".db"))
+
 
 if __name__ == "__main__":
     unittest.main()

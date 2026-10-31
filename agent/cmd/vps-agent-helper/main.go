@@ -1,8 +1,10 @@
 package main
 
 import (
+	"archive/tar"
 	"bufio"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -66,6 +68,9 @@ var programPaths = map[string][]string{
 	},
 	"sqlite3": {
 		"/usr/bin/sqlite3", "/bin/sqlite3", "/usr/local/bin/sqlite3",
+	},
+	"xray-core": {
+		"/usr/local/bin/xray-core", "/usr/bin/xray-core", "/bin/xray-core",
 	},
 }
 
@@ -331,6 +336,9 @@ func (b broker) xui(ctx context.Context, rawUnit, operation, path string) error 
 	case "restart":
 		return serviceAction(ctx, rawUnit, "restart")
 	case "install":
+		if isXrayUnit(rawUnit) {
+			return errors.New("install is not supported for xray nodes")
+		}
 		if err := installXUI(ctx); err != nil {
 			return err
 		}
@@ -420,9 +428,27 @@ func installXUI(ctx context.Context) error {
 	return requireSuccess(result, "MHSanaei 3x-ui install")
 }
 
+var (
+	xrayConfigDir  = "/etc/xray"
+	xrayConfigFile = "/etc/xray/config.json"
+	xrayNodeEnv    = "/etc/xray/node.env"
+)
+
+const maxXrayConfigBytes = 1024 * 1024 // 1 MiB
+
+func isXrayUnit(raw string) bool {
+	return strings.TrimSuffix(strings.TrimSpace(raw), ".service") == "xray"
+}
+
 func (b broker) xuiDatabase(ctx context.Context, rawUnit, operation, path string) error {
 	if err := validateAgentBackupPath(path); err != nil {
 		return err
+	}
+	if isXrayUnit(rawUnit) {
+		if operation == "backup" {
+			return backupXrayConfig(path)
+		}
+		return restoreXrayConfig(ctx, rawUnit, path)
 	}
 	database, err := findXUIDatabase()
 	if err != nil {
@@ -439,6 +465,247 @@ func (b broker) xuiDatabase(ctx context.Context, rawUnit, operation, path string
 		return writeJSON(xuiBackupResponse{Method: method, Database: database})
 	}
 	return restoreXUIDatabase(ctx, rawUnit, database, path)
+}
+
+func backupXrayConfig(dest string) error {
+	if !fileExists(xrayConfigFile) {
+		return fmt.Errorf("xray configuration file not found: %s", xrayConfigFile)
+	}
+	if err := os.MkdirAll(filepath.Dir(dest), 0700); err != nil {
+		return fmt.Errorf("create backup directory: %w", err)
+	}
+	temporary := dest + ".part"
+	outFile, err := os.OpenFile(temporary, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
+	if err != nil {
+		return fmt.Errorf("create temporary backup archive: %w", err)
+	}
+	defer func() {
+		outFile.Close()
+		_ = os.Remove(temporary)
+	}()
+
+	gw := gzip.NewWriter(outFile)
+	tw := tar.NewWriter(gw)
+
+	// 打包 config.json（必须存在）
+	if err := addFileToTar(tw, xrayConfigFile, "config.json"); err != nil {
+		return fmt.Errorf("archive xray config: %w", err)
+	}
+
+	// 打包 node.env（若存在）
+	if fileExists(xrayNodeEnv) {
+		if err := addFileToTar(tw, xrayNodeEnv, "node.env"); err != nil {
+			return fmt.Errorf("archive xray node.env: %w", err)
+		}
+	}
+
+	if err := tw.Close(); err != nil {
+		return fmt.Errorf("finalize tar archive: %w", err)
+	}
+	if err := gw.Close(); err != nil {
+		return fmt.Errorf("finalize gzip stream: %w", err)
+	}
+	if err := outFile.Close(); err != nil {
+		return fmt.Errorf("close backup file: %w", err)
+	}
+
+	if err := os.Rename(temporary, dest); err != nil {
+		return fmt.Errorf("stage backup archive: %w", err)
+	}
+
+	if err := adoptBackupOwnership(dest); err != nil {
+		return err
+	}
+	return writeJSON(xuiBackupResponse{Method: "xray_config_tar_gz", Database: xrayConfigFile})
+}
+
+func addFileToTar(tw *tar.Writer, srcPath, name string) error {
+	info, err := os.Stat(srcPath)
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("source is not a regular file: %s", srcPath)
+	}
+	file, err := os.Open(srcPath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	header, err := tar.FileInfoHeader(info, "")
+	if err != nil {
+		return err
+	}
+	header.Name = name
+	header.Mode = 0600
+	if err := tw.WriteHeader(header); err != nil {
+		return err
+	}
+	_, err = io.Copy(tw, file)
+	return err
+}
+
+func restoreXrayConfig(ctx context.Context, rawUnit, src string) error {
+	restoreDir := filepath.Join(xrayConfigDir, ".vps-tool-restore")
+	_ = os.RemoveAll(restoreDir)
+	if err := os.MkdirAll(restoreDir, 0700); err != nil {
+		return fmt.Errorf("create restore temporary directory: %w", err)
+	}
+	defer func() {
+		_ = os.RemoveAll(restoreDir)
+	}()
+
+	hasConfig, hasEnv, err := extractXrayTarGz(src, restoreDir)
+	if err != nil {
+		return fmt.Errorf("extract xray backup: %w", err)
+	}
+	if !hasConfig {
+		return errors.New("invalid xray backup archive: missing config.json")
+	}
+
+	stagedConfig := filepath.Join(restoreDir, "config.json")
+	stagedTestConfig := filepath.Join(restoreDir, "config.new.json")
+	if err := copyFile(stagedConfig, stagedTestConfig); err != nil {
+		return fmt.Errorf("stage test configuration: %w", err)
+	}
+
+	// 语法校验
+	if _, err := findProgram("xray-core"); err != nil {
+		return fmt.Errorf("xray-core executable not found for configuration test: %w", err)
+	}
+	testResult, err := runProgram(ctx, "xray-core", "run", "-test", "-config", stagedTestConfig)
+	if err != nil || testResult.exitCode != 0 {
+		errMsg := string(testResult.stderr)
+		if errMsg == "" {
+			errMsg = string(testResult.stdout)
+		}
+		if errMsg == "" && err != nil {
+			errMsg = err.Error()
+		}
+		return fmt.Errorf("xray configuration test failed: %s", strings.TrimSpace(errMsg))
+	}
+
+	// 备份当前文件
+	ts := strconv.FormatInt(time.Now().Unix(), 10)
+	configBackup := xrayConfigFile + ".before-vps-tool-" + ts
+	var envBackup string
+	if fileExists(xrayConfigFile) {
+		if err := copyFile(xrayConfigFile, configBackup); err != nil {
+			return fmt.Errorf("preserve current xray config: %w", err)
+		}
+	}
+	if fileExists(xrayNodeEnv) {
+		envBackup = xrayNodeEnv + ".before-vps-tool-" + ts
+		if err := copyFile(xrayNodeEnv, envBackup); err != nil {
+			_ = os.Remove(configBackup)
+			return fmt.Errorf("preserve current xray node.env: %w", err)
+		}
+	}
+
+	// 原子替换 config.json
+	if err := copyFile(stagedConfig, xrayConfigFile); err != nil {
+		rollbackXrayRestore(configBackup, envBackup)
+		return fmt.Errorf("replace xray config: %w", err)
+	}
+
+	// 替换或清理 node.env
+	if hasEnv {
+		stagedEnv := filepath.Join(restoreDir, "node.env")
+		if err := copyFile(stagedEnv, xrayNodeEnv); err != nil {
+			rollbackXrayRestore(configBackup, envBackup)
+			return fmt.Errorf("replace xray node.env: %w", err)
+		}
+	} else {
+		// 备份包内没有 node.env，删除现有 node.env，防止旧环境配置污染
+		_ = os.Remove(xrayNodeEnv)
+	}
+
+	// 重启服务
+	if err := serviceAction(ctx, rawUnit, "restart"); err != nil {
+		rollbackXrayRestore(configBackup, envBackup)
+		_ = serviceAction(ctx, rawUnit, "restart")
+		return fmt.Errorf("restart xray after restore: %w", err)
+	}
+
+	// 成功清理备份
+	if configBackup != "" {
+		_ = os.Remove(configBackup)
+	}
+	if envBackup != "" {
+		_ = os.Remove(envBackup)
+	}
+	return nil
+}
+
+func rollbackXrayRestore(configBackup, envBackup string) {
+	if configBackup != "" && fileExists(configBackup) {
+		_ = copyFile(configBackup, xrayConfigFile)
+		_ = os.Remove(configBackup)
+	}
+	if envBackup != "" && fileExists(envBackup) {
+		_ = copyFile(envBackup, xrayNodeEnv)
+		_ = os.Remove(envBackup)
+	} else if envBackup == "" {
+		_ = os.Remove(xrayNodeEnv)
+	}
+}
+
+func extractXrayTarGz(src, destDir string) (hasConfig bool, hasEnv bool, err error) {
+	file, err := os.Open(src)
+	if err != nil {
+		return false, false, err
+	}
+	defer file.Close()
+
+	gr, err := gzip.NewReader(file)
+	if err != nil {
+		return false, false, fmt.Errorf("open gzip reader: %w", err)
+	}
+	defer gr.Close()
+
+	tr := tar.NewReader(gr)
+	for {
+		header, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return false, false, fmt.Errorf("read tar entry: %w", err)
+		}
+
+		cleanName := filepath.Clean(header.Name)
+		if cleanName != "config.json" && cleanName != "node.env" {
+			return false, false, fmt.Errorf("unrecognized file in xray backup archive: %q", header.Name)
+		}
+		if header.Typeflag != tar.TypeReg && header.Typeflag != tar.TypeRegA {
+			return false, false, fmt.Errorf("archive entry %q is not a regular file", header.Name)
+		}
+		if header.Size > maxXrayConfigBytes || header.Size < 0 {
+			return false, false, fmt.Errorf("archive entry %q exceeds maximum allowed size (1 MiB)", header.Name)
+		}
+
+		targetPath := filepath.Join(destDir, cleanName)
+		out, err := os.OpenFile(targetPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
+		if err != nil {
+			return false, false, fmt.Errorf("create staged file %s: %w", cleanName, err)
+		}
+		copied, err := io.Copy(out, io.LimitReader(tr, maxXrayConfigBytes+1))
+		out.Close()
+		if err != nil {
+			return false, false, fmt.Errorf("extract staged file %s: %w", cleanName, err)
+		}
+		if copied > maxXrayConfigBytes {
+			return false, false, fmt.Errorf("archive entry %q exceeds 1 MiB limit during read", header.Name)
+		}
+
+		if cleanName == "config.json" {
+			hasConfig = true
+		} else if cleanName == "node.env" {
+			hasEnv = true
+		}
+	}
+	return hasConfig, hasEnv, nil
 }
 
 func validateAgentBackupPath(path string) error {

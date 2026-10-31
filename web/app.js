@@ -24,6 +24,16 @@
     ].join(" ");
     return `(command -v curl >/dev/null 2>&1 && curl -fsSL ${installerUrl} || wget -qO- ${installerUrl}) | sh -s -- ${args}`;
   };
+  const isXrayNode = (node) => (node?.xui_service || "").replace(/\.service$/, "") === "xray";
+  const serviceName = (node) => isXrayNode(node) ? "Xray" : "3x-ui";
+  const labelFor = (action, node) => {
+    if (isXrayNode(node)) {
+      if (action === "restart_xui") return "重启 Xray";
+      if (action === "backup_xui") return "备份配置";
+      if (action === "restore_xui") return "恢复配置";
+    }
+    return actionLabels[action] || action;
+  };
   const actionLabels = {
     get_status: "刷新状态", get_ip: "获取出口 IP", warp_on: "开启 WARP",
     warp_off: "关闭 WARP", change_ip: "切换出口 IP", restart_xui: "重启 3x-ui",
@@ -343,9 +353,9 @@
       <section class="detail-hero"><div class="detail-identity"><span class="detail-node-icon"><span class="material-symbols-outlined" aria-hidden="true">dns</span><i class="${node.online ? "is-online" : ""}"></i></span><div><div class="detail-title-line"><h2>${escapeHtml(node.name)}</h2>${badge(nodeStatus(node))}</div><div class="detail-id">ID: ${escapeHtml(node.id)}</div></div></div><div class="detail-hero-actions"><button class="button button-quiet button-small" data-edit-node="${escapeHtml(node.id)}" type="button"><span class="button-icon material-symbols-outlined" aria-hidden="true">edit</span>编辑节点</button><button class="button button-quiet" data-action="get_status" data-node-id="${escapeHtml(node.id)}" type="button"${!node.online || state.busy.has(node.id) ? " disabled" : ""}><span class="button-icon material-symbols-outlined" aria-hidden="true">sync</span>同步状态</button></div></section>
       <div class="detail-layout"><div class="detail-primary">
         <section class="detail-metric-grid"><div class="metric-card"><div class="metric-card-heading"><span><span class="material-symbols-outlined" aria-hidden="true">memory</span>CPU 使用率</span><strong>${cpu.toFixed(1)}%</strong></div><span class="metric-track"><i style="width:${cpu}%"></i></span></div><div class="metric-card"><div class="metric-card-heading"><span><span class="material-symbols-outlined" aria-hidden="true">developer_board</span>内存使用</span><strong>${formatBytes(memoryUsed)} / ${formatBytes(memoryTotal)}</strong></div><span class="metric-track is-blue"><i style="width:${memoryPercent}%"></i></span></div><div class="metric-card"><div class="metric-card-heading"><span><span class="material-symbols-outlined" aria-hidden="true">hard_drive</span>根分区</span><strong>${diskPercent}%</strong></div><span class="metric-track is-tertiary"><i style="width:${diskPercent}%"></i></span></div></section>
-        <section class="detail-panel"><div class="detail-section-heading"><h3>快捷操作</h3><span class="table-meta">仅固定 Action 白名单</span></div><div class="quick-action-grid">${actions.map((action) => `<button type="button" class="quick-action${["warp_off", "change_ip", "restart_xui"].includes(action) ? " is-state-changing" : ""}" data-action="${action}" data-node-id="${escapeHtml(node.id)}"${!node.online || state.busy.has(node.id) ? " disabled" : ""}><span class="material-symbols-outlined" aria-hidden="true">${actionIcons[action]}</span><strong>${escapeHtml(actionLabels[action])}</strong><small>${action === "get_status" || action === "get_ip" ? "读取状态" : "记录到审计"}</small></button>`).join("")}</div></section>
-        <section class="detail-panel"><div class="detail-section-heading"><h3>系统准备</h3><span class="table-meta">固定来源 · 结构化操作</span></div><div class="quick-action-grid setup-action-grid"><button type="button" class="quick-action is-state-changing" data-action="install_warp" data-node-id="${escapeHtml(node.id)}"${setupDisabled ? " disabled" : ""}><span class="material-symbols-outlined" aria-hidden="true">${actionIcons.install_warp}</span><strong>${actionLabels.install_warp}</strong><small>双栈 · 全局</small></button><button type="button" class="quick-action is-state-changing" data-action="install_xui" data-node-id="${escapeHtml(node.id)}"${setupDisabled ? " disabled" : ""}><span class="material-symbols-outlined" aria-hidden="true">${actionIcons.install_xui}</span><strong>${actionLabels.install_xui}</strong><small>MHSanaei 官方脚本</small></button><button type="button" class="quick-action is-state-changing" data-backup-xui="${escapeHtml(node.id)}"${setupDisabled ? " disabled" : ""}><span class="material-symbols-outlined" aria-hidden="true">${actionIcons.backup_xui}</span><strong>${actionLabels.backup_xui}</strong><small>在线一致性备份</small></button><button type="button" class="quick-action is-state-changing" data-restore-xui="${escapeHtml(node.id)}"${setupDisabled ? " disabled" : ""}><span class="material-symbols-outlined" aria-hidden="true">${actionIcons.restore_xui}</span><strong>${actionLabels.restore_xui}</strong><small>选择历史备份</small></button></div></section>
-        <section class="detail-panel node-information"><div class="detail-section-heading"><h3>节点信息</h3><div class="detail-section-actions">${agentButton}<span class="table-meta">最后更新：${escapeHtml(relativeTime(node.last_seen_at))}</span></div></div><dl><div><dt>公共 IPv4</dt><dd>${escapeHtml(node.public_ipv4 || "未采集")}</dd></div><div><dt>公共 IPv6</dt><dd>${escapeHtml(node.public_ipv6 || "未采集")}</dd></div><div><dt>Agent 版本</dt><dd>${escapeHtml(node.agent_version || "—")}</dd></div><div><dt>系统 / 架构</dt><dd>${escapeHtml(`${node.os_name || "—"} ${node.os_version || ""} / ${node.architecture || "—"}`)}</dd></div><div><dt>WARP 接口</dt><dd>${badge(statusValue(node, "warp_status"))}</dd></div><div><dt>3x-ui 服务</dt><dd>${badge(statusValue(node, "xui_status"))} ${escapeHtml(node.xui_service || "x-ui")}</dd></div><div><dt>运行时间</dt><dd>${escapeHtml(formatUptime(node.uptime_seconds))}</dd></div><div><dt>地区</dt><dd>${escapeHtml(node.region || "未设置")}</dd></div></dl></section>
+        <section class="detail-panel"><div class="detail-section-heading"><h3>快捷操作</h3><span class="table-meta">仅固定 Action 白名单</span></div><div class="quick-action-grid">${actions.map((action) => `<button type="button" class="quick-action${["warp_off", "change_ip", "restart_xui"].includes(action) ? " is-state-changing" : ""}" data-action="${action}" data-node-id="${escapeHtml(node.id)}"${!node.online || state.busy.has(node.id) ? " disabled" : ""}><span class="material-symbols-outlined" aria-hidden="true">${actionIcons[action]}</span><strong>${escapeHtml(labelFor(action, node))}</strong><small>${action === "get_status" || action === "get_ip" ? "读取状态" : "记录到审计"}</small></button>`).join("")}</div></section>
+        <section class="detail-panel"><div class="detail-section-heading"><h3>系统准备</h3><span class="table-meta">固定来源 · 结构化操作</span></div><div class="quick-action-grid setup-action-grid"><button type="button" class="quick-action is-state-changing" data-action="install_warp" data-node-id="${escapeHtml(node.id)}"${setupDisabled ? " disabled" : ""}><span class="material-symbols-outlined" aria-hidden="true">${actionIcons.install_warp}</span><strong>${actionLabels.install_warp}</strong><small>双栈 · 全局</small></button>${isXrayNode(node) ? "" : `<button type="button" class="quick-action is-state-changing" data-action="install_xui" data-node-id="${escapeHtml(node.id)}"${setupDisabled ? " disabled" : ""}><span class="material-symbols-outlined" aria-hidden="true">${actionIcons.install_xui}</span><strong>${actionLabels.install_xui}</strong><small>MHSanaei 官方脚本</small></button>`}<button type="button" class="quick-action is-state-changing" data-backup-xui="${escapeHtml(node.id)}"${setupDisabled ? " disabled" : ""}><span class="material-symbols-outlined" aria-hidden="true">${actionIcons.backup_xui}</span><strong>${escapeHtml(labelFor("backup_xui", node))}</strong><small>${isXrayNode(node) ? "config.json + node.env" : "在线一致性备份"}</small></button><button type="button" class="quick-action is-state-changing" data-restore-xui="${escapeHtml(node.id)}"${setupDisabled ? " disabled" : ""}><span class="material-symbols-outlined" aria-hidden="true">${actionIcons.restore_xui}</span><strong>${escapeHtml(labelFor("restore_xui", node))}</strong><small>选择历史备份</small></button></div></section>
+        <section class="detail-panel node-information"><div class="detail-section-heading"><h3>节点信息</h3><div class="detail-section-actions">${agentButton}<span class="table-meta">最后更新：${escapeHtml(relativeTime(node.last_seen_at))}</span></div></div><dl><div><dt>公共 IPv4</dt><dd>${escapeHtml(node.public_ipv4 || "未采集")}</dd></div><div><dt>公共 IPv6</dt><dd>${escapeHtml(node.public_ipv6 || "未采集")}</dd></div><div><dt>Agent 版本</dt><dd>${escapeHtml(node.agent_version || "—")}</dd></div><div><dt>系统 / 架构</dt><dd>${escapeHtml(`${node.os_name || "—"} ${node.os_version || ""} / ${node.architecture || "—"}`)}</dd></div><div><dt>WARP 接口</dt><dd>${badge(statusValue(node, "warp_status"))}</dd></div><div><dt>代理服务</dt><dd>${badge(statusValue(node, "xui_status"))} ${escapeHtml(node.xui_service || "x-ui")}</dd></div><div><dt>运行时间</dt><dd>${escapeHtml(formatUptime(node.uptime_seconds))}</dd></div><div><dt>地区</dt><dd>${escapeHtml(node.region || "未设置")}</dd></div></dl></section>
         <section class="detail-panel ip-history-launch-panel"><div class="detail-section-heading"><div><h3>出口 IP 历史</h3><span class="table-meta">最多保留 100 条</span></div><button class="button button-quiet button-small" type="button" data-open-ip-history="${escapeHtml(node.id)}"><span class="button-icon material-symbols-outlined" aria-hidden="true">history</span>查看历史</button></div></section>
       </div><aside class="detail-secondary"><section class="detail-panel recent-operations"><div class="detail-section-heading"><h3>最近操作</h3><button class="text-button" type="button" data-view="audit">查看全部</button></div><div class="timeline">${recent.length ? recent.map((item) => `<div class="timeline-item status-${escapeHtml(item.status)}"><i aria-hidden="true"></i><div><div><strong>${escapeHtml(actionLabels[item.action] || item.action)}</strong><time>${escapeHtml(relativeTime(item.created_at))}</time></div><p>${escapeHtml(item.error_message || (item.result ? "Agent 已返回结果。" : "等待 Agent 回执。"))}</p>${badge(item.status)}</div></div>`).join("") : `<div class="detail-empty">暂无操作记录。</div>`}</div></section><section class="danger-zone"><div><span class="material-symbols-outlined" aria-hidden="true">warning</span><h3>危险操作</h3></div><p>删除节点会吊销凭据、停止关联任务，并从控制平面移除节点。</p><button class="button button-danger button-wide" type="button" data-delete-node="${escapeHtml(node.id)}">删除节点</button></section></aside></div>`;
   }
@@ -397,12 +407,13 @@
     const node = state.nodes.find((item) => item.id === nodeId);
     if (!node) return;
     const backups = state.xuiBackups[nodeId] || [];
+    $("xuiBackupDialogTitle").textContent = isXrayNode(node) ? "Xray 配置备份" : "3x-ui 备份";
     $("xuiBackupDialogMessage").textContent = node.name;
     $("xuiBackupDialogContent").innerHTML = errorMessage
       ? `<div class="history-empty is-error"><span class="material-symbols-outlined" aria-hidden="true">error</span><div><strong>备份列表读取失败</strong><span>${escapeHtml(errorMessage)}</span></div></div>`
       : backups.length
         ? `<div class="backup-list">${backups.map((item) => `<article class="backup-item"><div><strong>${escapeHtml(item.filename)}</strong><span>${formatBytes(item.size_bytes || 0)} · ${escapeHtml(formatTime(item.created_at, true))}</span><code>${escapeHtml((item.sha256 || "").slice(0, 16))}…</code></div><button class="button button-danger button-small" type="button" data-restore-backup="${escapeHtml(item.id)}" data-restore-node="${escapeHtml(nodeId)}"${item.status !== "ready" || state.busy.has(nodeId) ? " disabled" : ""}><span class="button-icon material-symbols-outlined" aria-hidden="true">restore</span>恢复</button></article>`).join("")}</div>`
-        : `<div class="history-empty"><span class="material-symbols-outlined" aria-hidden="true">backup</span><div><strong>暂无 3x-ui 备份</strong><span>先在节点详情执行一次备份。</span></div></div>`;
+        : `<div class="history-empty"><span class="material-symbols-outlined" aria-hidden="true">backup</span><div><strong>暂无 ${escapeHtml(serviceName(node))} 备份</strong><span>先在节点详情执行一次备份。</span></div></div>`;
     hydrateIcons($("xuiBackupDialogContent"));
   }
 
@@ -413,7 +424,7 @@
       if ($("xuiBackupDialog").open) renderXuiBackups(nodeId);
     } catch (error) {
       if ($("xuiBackupDialog").open) renderXuiBackups(nodeId, error.message);
-      notify(`3x-ui 备份列表读取失败：${error.message}`, "error");
+      notify(`备份列表读取失败：${error.message}`, "error");
     }
   }
 
@@ -427,13 +438,17 @@
   async function backupXui(nodeId) {
     const node = state.nodes.find((item) => item.id === nodeId);
     if (!node || state.busy.has(nodeId)) return;
-    confirmAction(`${node.name} 将创建一份 3x-ui 在线数据库备份。`, "<ul><li>不会停止 x-ui 服务。</li><li>备份完成后保存到控制端。</li></ul>", async () => {
+    const isXray = isXrayNode(node);
+    const desc = isXray
+      ? "<ul><li>打包 /etc/xray/config.json 与 node.env，不中断服务。</li><li>备份完成后保存到控制端。</li></ul>"
+      : "<ul><li>不会停止 x-ui 服务。</li><li>备份完成后保存到控制端。</li></ul>";
+    confirmAction(`${node.name} 将创建一份 ${serviceName(node)} 配置备份。`, desc, async () => {
       try {
         const prepared = await api(`/api/nodes/${encodeURIComponent(nodeId)}/xui-backups/prepare`, { method: "POST" });
         await submitAction(nodeId, "backup_xui", { backup_id: prepared.backup.id });
         await loadXuiBackups(nodeId);
-      } catch (error) { notify(`创建 3x-ui 备份失败：${error.message}`, "error"); }
-    }, { title: actionLabels.backup_xui, proceed: "开始备份" });
+      } catch (error) { notify(`创建备份失败：${error.message}`, "error"); }
+    }, { title: labelFor("backup_xui", node), proceed: "开始备份" });
   }
 
   function restoreXui(nodeId, backupId) {
@@ -441,9 +456,13 @@
     const backup = (state.xuiBackups[nodeId] || []).find((item) => item.id === backupId);
     if (!node || !backup || state.busy.has(nodeId)) return;
     closeDialog("xuiBackupDialog");
-    confirmAction(`${node.name} 将恢复 3x-ui 数据库。`, `<ul><li>恢复前会保留目标 VPS 当前数据库。</li><li>恢复过程会短暂重启 x-ui 服务。</li><li>恢复文件：${escapeHtml(backup.filename)}</li></ul>`, async () => {
+    const isXray = isXrayNode(node);
+    const desc = isXray
+      ? `<ul><li>先用 xray-core 校验配置，通过后才替换。</li><li>会短暂重启 Xray 服务，失败自动回滚。</li><li>恢复文件：${escapeHtml(backup.filename)}</li></ul>`
+      : `<ul><li>恢复前会保留目标 VPS 当前数据库。</li><li>恢复过程会短暂重启 x-ui 服务。</li><li>恢复文件：${escapeHtml(backup.filename)}</li></ul>`;
+    confirmAction(`${node.name} 将恢复 ${serviceName(node)} 配置。`, desc, async () => {
       await submitAction(nodeId, "restore_xui", { backup_id: backupId });
-    }, { title: actionLabels.restore_xui, proceed: "确认恢复" });
+    }, { title: labelFor("restore_xui", node), proceed: "确认恢复" });
   }
 
   function filteredActions() {
@@ -777,7 +796,7 @@
 
   $("addNodeButton").addEventListener("click", () => {
     state.nodeFormMode = "create"; state.editingNodeId = "";
-    $("nodeForm").reset(); $("nodeXuiService").value = "x-ui";
+    $("nodeForm").reset(); $("nodeXuiService").value = "xray";
     $("nodeDialogTitle").textContent = "添加节点"; $("nodeDialogKicker").textContent = "FLEET / ENROLLMENT";
     $("nodeDialogMessage").textContent = "创建后会生成一个短时有效、仅显示一次的注册 Token。";
     $("nodeFormSubmit").textContent = "创建并生成 Token"; $("nodeFormMessage").textContent = "";
@@ -787,7 +806,21 @@
     state.nodeFormMode = "edit"; state.editingNodeId = node.id;
     $("nodeName").value = node.name || ""; $("nodeRegion").value = node.region || "";
     $("nodeTags").value = (node.tags || []).join(", "); $("nodeWarpAdapter").value = node.warp_adapter || "generic";
-    $("nodeXuiService").value = node.xui_service || "x-ui"; $("nodeNotes").value = node.notes || "";
+    const serviceVal = (node.xui_service || "xray").replace(/\.service$/, "");
+    if ($("nodeXuiService").querySelector(`option[value="${serviceVal}"]`)) {
+      $("nodeXuiService").value = serviceVal;
+    } else {
+      let customOpt = $("nodeXuiService").querySelector('option[data-custom="true"]');
+      if (!customOpt) {
+        customOpt = document.createElement("option");
+        customOpt.setAttribute("data-custom", "true");
+        $("nodeXuiService").appendChild(customOpt);
+      }
+      customOpt.value = node.xui_service;
+      customOpt.textContent = `${node.xui_service} (自定义)`;
+      $("nodeXuiService").value = node.xui_service;
+    }
+    $("nodeNotes").value = node.notes || "";
     $("nodeDialogTitle").textContent = "编辑节点"; $("nodeDialogKicker").textContent = "NODE / SETTINGS";
     $("nodeDialogMessage").textContent = "修改节点信息不会更换 Agent 凭据或注册 Token。";
     $("nodeFormSubmit").textContent = "保存修改"; $("nodeFormMessage").textContent = "";

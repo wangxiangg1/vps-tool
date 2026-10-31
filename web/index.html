@@ -30,7 +30,7 @@
             <div class="story-content">
               <span class="story-rule" aria-hidden="true"></span>
               <h1 id="loginTitle">把每一台 VPS 的状态，<br><em>收进一个视图。</em></h1>
-              <p>用固定操作管理节点、出口 IP、WARP 与 3x-ui，让每一次变更都清楚、可追踪。</p>
+              <p>用固定操作管理节点、出口 IP、WARP 与 节点代理服务（3x-ui / Xray），让每一次变更都清楚、可追踪。</p>
             </div>
             <div class="story-footer">
               <div class="story-stat"><span>DATA PLANE</span><strong>READY</strong></div>
@@ -176,7 +176,7 @@
                 <span class="signal-progress"><i></i></span>
               </div>
               <div class="signal-cell signal-cell-tertiary">
-                <span class="signal-label"><span class="material-symbols-outlined" aria-hidden="true">router</span>3x-ui 运行</span>
+                <span class="signal-label"><span class="material-symbols-outlined" aria-hidden="true">router</span>代理服务</span>
                 <div class="signal-number"><strong id="xuiRunningCount" class="signal-value">—</strong><span>Routing</span></div>
                 <span class="signal-note">服务单元状态</span>
                 <span class="signal-progress"><i></i></span>
@@ -217,7 +217,7 @@
                       </select>
                     </label>
                     <label class="select-control" for="xuiFilter">
-                      <span>3x-ui</span>
+                      <span>服务</span>
                       <select id="xuiFilter">
                         <option value="all">全部</option>
                         <option value="running">运行中</option>
@@ -342,7 +342,7 @@
             <label class="form-field"><span>地区</span><input id="nodeRegion" name="region" maxlength="100" placeholder="例如 Tokyo / JP"></label>
             <label class="form-field"><span>标签</span><input id="nodeTags" name="tags" placeholder="用英文逗号分隔"></label>
             <label class="form-field"><span>WARP 适配器</span><select id="nodeWarpAdapter" name="warp_adapter"><option value="generic">generic</option><option value="warp-cli">warp-cli</option><option value="wgcf">wgcf</option></select></label>
-            <label class="form-field"><span>3x-ui 服务名</span><input id="nodeXuiService" name="xui_service" value="x-ui" required maxlength="128"></label>
+            <label class="form-field"><span>代理服务</span><select id="nodeXuiService" name="xui_service"><option value="xray">xray (轻量命令行)</option><option value="x-ui">x-ui (3x-ui)</option></select></label>
             <label class="form-field form-field-wide"><span>备注</span><textarea id="nodeNotes" name="notes" rows="3" maxlength="2000"></textarea></label>
           </div>
           <p id="nodeFormMessage" class="form-message" role="alert"></p>
@@ -366,7 +366,7 @@
       </dialog>
 
       <dialog id="xuiBackupDialog" class="history-dialog backup-dialog" aria-labelledby="xuiBackupDialogTitle">
-        <header class="history-dialog-header"><div><h2 id="xuiBackupDialogTitle">3x-ui 备份</h2><p id="xuiBackupDialogMessage" class="history-dialog-node"></p></div><button class="icon-button" type="button" data-close-dialog="xuiBackupDialog" aria-label="关闭 3x-ui 备份" title="关闭"><span class="material-symbols-outlined" aria-hidden="true">close</span></button></header>
+        <header class="history-dialog-header"><div><h2 id="xuiBackupDialogTitle">配置备份</h2><p id="xuiBackupDialogMessage" class="history-dialog-node"></p></div><button class="icon-button" type="button" data-close-dialog="xuiBackupDialog" aria-label="关闭配置备份" title="关闭"><span class="material-symbols-outlined" aria-hidden="true">close</span></button></header>
         <div id="xuiBackupDialogContent" class="ip-history-dialog-content" aria-live="polite"></div>
       </dialog>
 
@@ -376,7 +376,7 @@
           <p class="dialog-message">任务只能调用固定状态变更 Action，不接受命令或脚本。</p>
           <div class="dialog-form-grid">
             <label class="form-field"><span>任务名称</span><input id="taskName" required maxlength="100" placeholder="例如 每日切换出口 IP"></label>
-            <label class="form-field"><span>固定 Action</span><select id="taskAction"><option value="change_ip">切换出口 IP</option><option value="warp_on">开启 WARP</option><option value="warp_off">关闭 WARP</option><option value="restart_xui">重启 3x-ui</option></select></label>
+            <label class="form-field"><span>固定 Action</span><select id="taskAction"><option value="change_ip">切换出口 IP</option><option value="warp_on">开启 WARP</option><option value="warp_off">关闭 WARP</option><option value="restart_xui">重启代理服务（Xray/3x-ui）</option></select></label>
             <label class="form-field form-field-wide"><span>目标节点（可多选）</span><select id="taskNodes" multiple required size="4"></select></label>
             <label class="form-field"><span>调度类型</span><select id="taskScheduleType"><option value="daily">每日</option><option value="weekly">每周</option><option value="cron">Cron</option></select></label>
             <label class="form-field"><span>调度值</span><input id="taskScheduleValue" required maxlength="100" value="03:00"><small>每日使用 HH:MM；每周使用“星期 0-6 + HH:MM”。</small></label>
