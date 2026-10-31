@@ -174,6 +174,18 @@ func (c *FullCollector) Collect(ctx context.Context) (Report, error) {
 			report.EgressIPv6 = ips.IPv6
 		}
 	}
+	if isCloudflareWarpExitIP(report.EgressIPv4, report.EgressIPv6) {
+		if report.WarpState != model.WarpOn {
+			report.WarpState = model.WarpOn
+		}
+		if report.Errors != nil {
+			delete(report.Errors, "warp_status")
+			if len(report.Errors) == 0 {
+				report.Errors = nil
+			}
+		}
+		warpErr = nil
+	}
 	if len(report.Errors) == 0 {
 		report.Errors = nil
 	}
@@ -430,4 +442,14 @@ func clampPercentage(value float64) float64 {
 		return 100
 	}
 	return value
+}
+
+func isCloudflareWarpExitIP(ipv4, ipv6 string) bool {
+	if ipv4 != "" && (strings.HasPrefix(ipv4, "104.28.") || strings.HasPrefix(ipv4, "104.29.")) {
+		return true
+	}
+	if ipv6 != "" && strings.HasPrefix(strings.ToLower(ipv6), "2a09:bac") {
+		return true
+	}
+	return false
 }

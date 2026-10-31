@@ -196,7 +196,22 @@ func (S *Service) Seen(id string) {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	S.DB.SQL.Exec("UPDATE nodes SET last_seen_at=?,updated_at=? WHERE id=?", now, now, id)
 }
+func isCloudflareWarpExit(ipv4, ipv6 string) bool {
+	if ipv4 != "" && (strings.HasPrefix(ipv4, "104.28.") || strings.HasPrefix(ipv4, "104.29.")) {
+		return true
+	}
+	if ipv6 != "" && strings.HasPrefix(strings.ToLower(ipv6), "2a09:bac") {
+		return true
+	}
+	return false
+}
+
 func (S *Service) UpdateStatus(id string, p map[string]any) error {
+	ipv4, _ := p["public_ipv4"].(string)
+	ipv6, _ := p["public_ipv6"].(string)
+	if isCloudflareWarpExit(ipv4, ipv6) {
+		p["warp_status"] = "on"
+	}
 	b, err := json.Marshal(p)
 	if err != nil {
 		return err

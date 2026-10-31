@@ -300,6 +300,21 @@
     return name || "Linux";
   }
 
+  function isCloudflareWarpExit(node) {
+    if (!node) return false;
+    const ip4 = text(node.public_ipv4 || node.egress_ipv4 || (node.status && (node.status.public_ipv4 || node.status.egress_ipv4)), "").trim();
+    const ip6 = text(node.public_ipv6 || node.egress_ipv6 || (node.status && (node.status.public_ipv6 || node.status.egress_ipv6)), "").trim();
+    if (ip4.startsWith("104.28.") || ip4.startsWith("104.29.")) return true;
+    if (ip6.toLowerCase().startsWith("2a09:bac")) return true;
+    return false;
+  }
+
+  function effectiveWarpStatus(node) {
+    if (isCloudflareWarpExit(node)) return "on";
+    const status = statusValue(node, "warp_status");
+    return status || "off";
+  }
+
   function warpBadge(status) {
     const key = text(status, "unknown");
     return `<span class="status-badge status-${escapeHtml(key)}" title="WARP 接口状态"><small class="badge-prefix">WARP</small>${escapeHtml(statusLabels[key] || key)}</span>`;
@@ -339,9 +354,9 @@
 
   function renderSummary(nodes) {
     const online = nodes.filter((node) => node.online).length;
-    const warp = nodes.filter((node) => statusValue(node, "warp_status") === "on").length;
+    const warp = nodes.filter((node) => effectiveWarpStatus(node) === "on").length;
     const xui = nodes.filter((node) => statusValue(node, "xui_status") === "running").length;
-    const unknown = nodes.filter((node) => nodeStatus(node) === "unknown" || statusValue(node, "warp_status") === "unknown").length;
+    const unknown = nodes.filter((node) => nodeStatus(node) === "unknown" || effectiveWarpStatus(node) === "unknown").length;
     $("onlineCount").textContent = String(online);
     $("railOnlineCount").textContent = String(online);
     $("onlineSummary").textContent = `${nodes.length} 个节点已登记`;
@@ -367,7 +382,7 @@
       const searchable = `${node.name || ""} ${node.id || ""} ${node.region || ""} ${ip}`.toLowerCase();
       return (!query || searchable.includes(query))
         && (status === "all" || nodeStatus(node) === status)
-        && (warp === "all" || statusValue(node, "warp_status") === warp)
+        && (warp === "all" || effectiveWarpStatus(node) === warp)
         && (xui === "all" || statusValue(node, "xui_status") === xui);
     });
   }
@@ -413,7 +428,7 @@
         <td><label class="checkbox-label" title="选择在线节点"><input class="node-select" type="checkbox" data-node-id="${escapeHtml(node.id)}"${selected}${disabled} aria-label="选择 ${escapeHtml(node.name)}"><span class="custom-checkbox" aria-hidden="true"></span></label></td>
         <td><button class="node-cell node-link" data-open-node="${escapeHtml(node.id)}" type="button">${renderNodeAvatar(node)}<span class="node-cell-copy"><span class="node-name-line"><span class="node-name">${escapeHtml(node.name)}</span>${tags}</span><span class="node-meta">${escapeHtml(node.region || "未设置地区")} · ${escapeHtml(node.id.slice(0, 12))}</span></span></button></td>
         <td><div class="ip-stack">${ip4 ? `<span class="ip-value ip-v4">${escapeHtml(ip4)}</span>` : ""}${ip6 ? `<span class="ip-value ip-v6" title="${escapeHtml(ip6)}">${escapeHtml(ip6)}</span>` : ""}${!ip4 && !ip6 ? `<span class="ip-value is-unknown">未采集</span>` : ""}</div></td>
-        <td class="service-cell"><div class="service-badges">${warpBadge(statusValue(node, "warp_status"))}${proxyBadge(node)}</div></td>
+        <td class="service-cell"><div class="service-badges">${warpBadge(effectiveWarpStatus(node))}${proxyBadge(node)}</div></td>
         <td><div class="resource-cell"><div class="resource-line"><span>CPU ${cpu.toFixed(1)}%</span><span>MEM ${memoryPercent}%</span></div><div class="resource-bars"><span><i style="width:${cpu}%"></i></span><span><i class="memory" style="width:${memoryPercent}%"></i></span></div><div class="resource-line resource-caption"><span>${formatBytes(memoryUsed)} / ${formatBytes(memoryTotal)}</span><span class="system-caption" title="${escapeHtml(osFull)} · Agent ${escapeHtml(node.agent_version || "—")}">${escapeHtml(osShort)} · ${escapeHtml(node.agent_version || "—")}</span></div></div></td>
         <td><span class="uptime-value ${node.uptime_seconds ? "" : "is-unknown"}">${escapeHtml(formatUptime(node.uptime_seconds))}</span></td>
         <td><span class="heartbeat-value ${node.online ? "" : "is-offline"}">${escapeHtml(relativeTime(node.last_seen_at))}</span><br>${badge(nodeStatus(node))}</td>
@@ -444,7 +459,7 @@
     const agentButton = installed
       ? `<button class="button button-quiet button-small" type="button" data-action="upgrade_agent" data-node-id="${escapeHtml(node.id)}"${!node.online || state.busy.has(node.id) || !upgradeSupported ? " disabled" : ""} title="${upgradeSupported ? "从 GitHub Release 校验并升级 Agent" : "Agent 0.3.8 起支持面板直升"}"><span class="button-icon material-symbols-outlined" aria-hidden="true">system_update_alt</span>升级 Agent</button>`
       : `<button class="button button-quiet button-small" type="button" data-enroll-node="${escapeHtml(node.id)}"><span class="button-icon material-symbols-outlined" aria-hidden="true">terminal</span>生成安装命令</button>`;
-    const warpAction = statusValue(node, "warp_status") === "on" ? "warp_off" : "warp_on";
+    const warpAction = effectiveWarpStatus(node) === "on" ? "warp_off" : "warp_on";
     const actions = ["change_ip", warpAction, "restart_xui", "get_status", "get_ip"];
     const setupDisabled = !node.online || state.busy.has(node.id);
     $("detailContent").innerHTML = `
@@ -453,7 +468,7 @@
         <section class="detail-metric-grid"><div class="metric-card"><div class="metric-card-heading"><span><span class="material-symbols-outlined" aria-hidden="true">memory</span>CPU 使用率</span><strong>${cpu.toFixed(1)}%</strong></div><span class="metric-track"><i style="width:${cpu}%"></i></span></div><div class="metric-card"><div class="metric-card-heading"><span><span class="material-symbols-outlined" aria-hidden="true">developer_board</span>内存使用</span><strong>${formatBytes(memoryUsed)} / ${formatBytes(memoryTotal)}</strong></div><span class="metric-track is-blue"><i style="width:${memoryPercent}%"></i></span></div><div class="metric-card"><div class="metric-card-heading"><span><span class="material-symbols-outlined" aria-hidden="true">hard_drive</span>根分区</span><strong>${diskPercent}%</strong></div><span class="metric-track is-tertiary"><i style="width:${diskPercent}%"></i></span></div></section>
         <section class="detail-panel"><div class="detail-section-heading"><h3>快捷操作</h3><span class="table-meta">仅固定 Action 白名单</span></div><div class="quick-action-grid">${actions.map((action) => `<button type="button" class="quick-action${["warp_off", "change_ip", "restart_xui"].includes(action) ? " is-state-changing" : ""}" data-action="${action}" data-node-id="${escapeHtml(node.id)}"${!node.online || state.busy.has(node.id) ? " disabled" : ""}><span class="material-symbols-outlined" aria-hidden="true">${actionIcons[action]}</span><strong>${escapeHtml(labelFor(action, node))}</strong><small>${action === "get_status" || action === "get_ip" ? "读取状态" : "记录到审计"}</small></button>`).join("")}</div></section>
         <section class="detail-panel"><div class="detail-section-heading"><h3>系统准备</h3><span class="table-meta">固定来源 · 结构化操作</span></div><div class="quick-action-grid setup-action-grid"><button type="button" class="quick-action is-state-changing" data-action="install_warp" data-node-id="${escapeHtml(node.id)}"${setupDisabled ? " disabled" : ""}><span class="material-symbols-outlined" aria-hidden="true">${actionIcons.install_warp}</span><strong>${actionLabels.install_warp}</strong><small>双栈 · 全局</small></button>${isXrayNode(node) ? "" : `<button type="button" class="quick-action is-state-changing" data-action="install_xui" data-node-id="${escapeHtml(node.id)}"${setupDisabled ? " disabled" : ""}><span class="material-symbols-outlined" aria-hidden="true">${actionIcons.install_xui}</span><strong>${actionLabels.install_xui}</strong><small>MHSanaei 官方脚本</small></button>`}<button type="button" class="quick-action is-state-changing" data-backup-xui="${escapeHtml(node.id)}"${setupDisabled ? " disabled" : ""}><span class="material-symbols-outlined" aria-hidden="true">${actionIcons.backup_xui}</span><strong>${escapeHtml(labelFor("backup_xui", node))}</strong><small>${isXrayNode(node) ? "config.json + node.env" : "在线一致性备份"}</small></button><button type="button" class="quick-action is-state-changing" data-restore-xui="${escapeHtml(node.id)}"${setupDisabled ? " disabled" : ""}><span class="material-symbols-outlined" aria-hidden="true">${actionIcons.restore_xui}</span><strong>${escapeHtml(labelFor("restore_xui", node))}</strong><small>选择历史备份</small></button></div></section>
-        <section class="detail-panel node-information"><div class="detail-section-heading"><h3>节点信息</h3><div class="detail-section-actions">${agentButton}<span class="table-meta">最后更新：${escapeHtml(relativeTime(node.last_seen_at))}</span></div></div><dl><div><dt>公共 IPv4</dt><dd>${escapeHtml(node.public_ipv4 || "未采集")}</dd></div><div><dt>公共 IPv6</dt><dd>${escapeHtml(node.public_ipv6 || "未采集")}</dd></div><div><dt>Agent 版本</dt><dd>${escapeHtml(node.agent_version || "—")}</dd></div><div><dt>系统 / 架构</dt><dd>${escapeHtml(formatOS(node))}</dd></div><div><dt>WARP 接口</dt><dd>${warpBadge(statusValue(node, "warp_status"))}</dd></div><div><dt>代理服务</dt><dd>${proxyBadge(node)} <span class="service-name-tag">${escapeHtml(node.xui_service || "x-ui")}</span></dd></div><div><dt>运行时间</dt><dd>${escapeHtml(formatUptime(node.uptime_seconds))}</dd></div><div><dt>地区</dt><dd>${escapeHtml(node.region || "未设置")}</dd></div></dl></section>
+        <section class="detail-panel node-information"><div class="detail-section-heading"><h3>节点信息</h3><div class="detail-section-actions">${agentButton}<span class="table-meta">最后更新：${escapeHtml(relativeTime(node.last_seen_at))}</span></div></div><dl><div><dt>公共 IPv4</dt><dd>${escapeHtml(node.public_ipv4 || "未采集")}</dd></div><div><dt>公共 IPv6</dt><dd>${escapeHtml(node.public_ipv6 || "未采集")}</dd></div><div><dt>Agent 版本</dt><dd>${escapeHtml(node.agent_version || "—")}</dd></div><div><dt>系统 / 架构</dt><dd>${escapeHtml(formatOS(node))}</dd></div><div><dt>WARP 接口</dt><dd>${warpBadge(effectiveWarpStatus(node))}</dd></div><div><dt>代理服务</dt><dd>${proxyBadge(node)} <span class="service-name-tag">${escapeHtml(node.xui_service || "x-ui")}</span></dd></div><div><dt>运行时间</dt><dd>${escapeHtml(formatUptime(node.uptime_seconds))}</dd></div><div><dt>地区</dt><dd>${escapeHtml(node.region || "未设置")}</dd></div></dl></section>
         <section class="detail-panel ip-history-launch-panel"><div class="detail-section-heading"><div><h3>出口 IP 历史</h3><span class="table-meta">最多保留 100 条</span></div><button class="button button-quiet button-small" type="button" data-open-ip-history="${escapeHtml(node.id)}"><span class="button-icon material-symbols-outlined" aria-hidden="true">history</span>查看历史</button></div></section>
       </div><aside class="detail-secondary"><section class="detail-panel recent-operations"><div class="detail-section-heading"><h3>最近操作</h3><button class="text-button" type="button" data-view="audit">查看全部</button></div><div class="timeline">${recent.length ? recent.map((item) => `<div class="timeline-item status-${escapeHtml(item.status)}"><i aria-hidden="true"></i><div><div><strong>${escapeHtml(actionLabels[item.action] || item.action)}</strong><time>${escapeHtml(relativeTime(item.created_at))}</time></div><p>${escapeHtml(item.error_message || (item.result ? "Agent 已返回结果。" : "等待 Agent 回执。"))}</p>${badge(item.status)}</div></div>`).join("") : `<div class="detail-empty">暂无操作记录。</div>`}</div></section><section class="danger-zone"><div><span class="material-symbols-outlined" aria-hidden="true">warning</span><h3>危险操作</h3></div><p>删除节点会吊销凭据、停止关联任务，并从控制平面移除节点。</p><button class="button button-danger button-wide" type="button" data-delete-node="${escapeHtml(node.id)}">删除节点</button></section></aside></div>`;
   }

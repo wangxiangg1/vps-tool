@@ -193,16 +193,24 @@ func (b broker) warp(ctx context.Context, adapter, operation string) error {
 		return b.installWARP(ctx)
 	}
 	backend, err := b.backend(adapter)
-	if err != nil {
-		return err
-	}
-	switch operation {
-	case "status":
-		state, err := backend.Status(ctx)
+	if operation == "status" {
+		state := "off"
+		if err == nil {
+			state, err = backend.Status(ctx)
+		}
+		if state != "on" && checkCloudflareWarpExit(ctx) {
+			state = "on"
+			err = nil
+		}
 		if err != nil {
 			return err
 		}
 		return writeJSON(warpResponse{State: state})
+	}
+	if err != nil {
+		return err
+	}
+	switch operation {
 	case "on":
 		return backend.On(ctx)
 	case "off":
@@ -228,11 +236,43 @@ func (b broker) backend(adapter string) (warpBackend, error) {
 }
 
 func (b broker) autoBackend() (warpBackend, error) {
-	if _, err := findProgram("warp-cli"); err == nil {
-		return cliBackend{}, nil
+	// 1. 运行态优先检测（Active-First）：优先检查正在运行的后端
+	if _, err := findProgram("wg"); err == nil {
+		res, err := runProgram(context.Background(), "wg", "show", "interfaces")
+		if err == nil && res.exitCode == 0 {
+			fields := strings.Fields(string(res.stdout))
+			if len(fields) > 0 {
+				return wgcfBackend{interfaceName: fields[0]}, nil
+			}
+		}
 	}
+	for _, iface := range []string{"warp", "wgcf", "wg0"} {
+		res, err := runProgram(context.Background(), "ip", "link", "show", "dev", iface)
+		if err == nil && res.exitCode == 0 {
+			out := string(res.stdout)
+			if strings.Contains(out, "<UP") || strings.Contains(out, "state UP") || strings.Contains(out, "state UNKNOWN") {
+				return wgcfBackend{interfaceName: iface}, nil
+			}
+		}
+	}
+	if serviceExists(warpGoUnit) {
+		if state, err := serviceUnitState(context.Background(), warpGoUnit); err == nil && state == "active" {
+			return warpGoBackend{}, nil
+		}
+	}
+	if _, err := findProgram("warp-cli"); err == nil {
+		res, err := runProgram(context.Background(), "warp-cli", "status")
+		if err == nil && res.exitCode == 0 {
+			text := strings.ToLower(string(append(res.stdout, res.stderr...)))
+			if strings.Contains(text, "connected") || strings.Contains(text, "warp=on") {
+				return cliBackend{}, nil
+			}
+		}
+	}
+
+	// 2. 无活跃后端时按已安装/已配置情况备选
 	if _, err := findProgram("wg-quick"); err == nil {
-		for _, interfaceName := range []string{"warp", "wgcf"} {
+		for _, interfaceName := range []string{"warp", "wgcf", "wg0"} {
 			if fileExists("/etc/wireguard/" + interfaceName + ".conf") {
 				return wgcfBackend{interfaceName: interfaceName}, nil
 			}
@@ -240,6 +280,12 @@ func (b broker) autoBackend() (warpBackend, error) {
 	}
 	if serviceExists(warpGoUnit) {
 		return warpGoBackend{}, nil
+	}
+	if _, err := findProgram("warp-cli"); err == nil {
+		return cliBackend{}, nil
+	}
+	if _, err := findProgram("wg-quick"); err == nil {
+		return wgcfBackend{interfaceName: "warp"}, nil
 	}
 	return nil, errors.New("no supported WARP backend was detected")
 }
@@ -285,14 +331,28 @@ type wgcfBackend struct {
 }
 
 func (b wgcfBackend) Status(ctx context.Context) (string, error) {
-	result, err := runProgram(ctx, "ip", "link", "show", "dev", b.interfaceName)
-	if err != nil {
-		return "", err
+	if _, err := findProgram("wg"); err == nil {
+		if b.interfaceName != "" {
+			res, err := runProgram(ctx, "wg", "show", b.interfaceName)
+			if err == nil && res.exitCode == 0 && len(bytes.TrimSpace(res.stdout)) > 0 {
+				return "on", nil
+			}
+		}
+		res, err := runProgram(ctx, "wg", "show", "interfaces")
+		if err == nil && res.exitCode == 0 && len(bytes.TrimSpace(res.stdout)) > 0 {
+			return "on", nil
+		}
 	}
-	if result.exitCode != 0 {
-		return "off", nil
+	if b.interfaceName != "" {
+		result, err := runProgram(ctx, "ip", "link", "show", "dev", b.interfaceName)
+		if err == nil && result.exitCode == 0 {
+			out := string(result.stdout)
+			if strings.Contains(out, "<UP") || strings.Contains(out, "state UP") || strings.Contains(out, "state UNKNOWN") {
+				return "on", nil
+			}
+		}
 	}
-	return "on", nil
+	return "off", nil
 }
 
 func (b wgcfBackend) On(ctx context.Context) error {
@@ -1267,4 +1327,62 @@ func writeJSON(value any) error {
 func fatal(err error) {
 	_, _ = fmt.Fprintln(os.Stderr, "vps-agent-helper:", err)
 	os.Exit(1)
+}
+
+func checkCloudflareWarpExit(ctx context.Context) bool {
+	checkCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+
+	transport := &http.Transport{
+		Proxy:               nil,
+		TLSClientConfig:     &tls.Config{MinVersion: tls.VersionTLS12},
+		TLSHandshakeTimeout: 2 * time.Second,
+		DialContext: (&net.Dialer{
+			Timeout: 2 * time.Second,
+		}).DialContext,
+	}
+	client := &http.Client{Timeout: 3 * time.Second, Transport: transport}
+	req, err := http.NewRequestWithContext(checkCtx, http.MethodGet, "https://www.cloudflare.com/cdn-cgi/trace", nil)
+	if err != nil {
+		return false
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1024))
+	if err != nil {
+		return false
+	}
+	text := string(body)
+	if strings.Contains(text, "warp=on") || strings.Contains(text, "warp=plus") {
+		return true
+	}
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "ip=") {
+			ip := strings.TrimPrefix(line, "ip=")
+			if isCloudflareWarpIPAddress(ip) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func isCloudflareWarpIPAddress(ipStr string) bool {
+	addr, err := netip.ParseAddr(strings.TrimSpace(ipStr))
+	if err != nil {
+		return false
+	}
+	if addr.Is4() {
+		b := addr.As4()
+		return b[0] == 104 && (b[1] == 28 || b[1] == 29)
+	}
+	if addr.Is6() {
+		b := addr.As16()
+		return b[0] == 0x2a && b[1] == 0x09 && b[2] == 0xba && (b[3] >= 0xc0 && b[3] <= 0xc7)
+	}
+	return false
 }

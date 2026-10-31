@@ -16,6 +16,7 @@ venv/
 # Go and local smoke output
 .tmp/
 agent/.gocache*/
+control-plane/.gocache*/
 agent/smoke-journal.json
 dist/
 control-plane/.tmp-*
