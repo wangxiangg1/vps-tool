@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -249,7 +250,18 @@ func (c *Collector) collectOS(report *SystemReport) {
 	if err == nil && report.Kernel == "" {
 		report.Kernel = strings.TrimSpace(string(data))
 	}
-	release, err := readLimited(c.procRoot+"/etc/os-release", maxOSReleaseBytes)
+	etcPath := "/etc/os-release"
+	if c.procRoot != "/proc" {
+		etcPath = filepath.Join(c.procRoot, "etc/os-release")
+	}
+	release, err := readLimited(etcPath, maxOSReleaseBytes)
+	if err != nil {
+		altPath := "/usr/lib/os-release"
+		if c.procRoot != "/proc" {
+			altPath = filepath.Join(c.procRoot, "usr/lib/os-release")
+		}
+		release, err = readLimited(altPath, maxOSReleaseBytes)
+	}
 	if err != nil {
 		report.OSName = runtime.GOOS
 		report.OSVersion = runtime.GOOS

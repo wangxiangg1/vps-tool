@@ -3742,3 +3742,76 @@ textarea:focus-visible {
     padding: 20px;
   }
 }
+
+/* 地区国旗头像 */
+.node-avatar.has-flag {
+  font-size: 22px;
+  line-height: 1;
+  background: var(--surface-high);
+}
+
+.detail-node-icon.has-flag {
+  font-size: 28px;
+  line-height: 1;
+  background: var(--surface-high);
+}
+
+.node-avatar.has-flag.is-offline,
+.detail-node-icon.has-flag.is-offline {
+  filter: grayscale(0.85);
+  opacity: 0.65;
+}
+
+/* 双栈 IP 显示 */
+.ip-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  justify-content: center;
+}
+
+.ip-stack .ip-v4 {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.ip-stack .ip-v6 {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-tertiary, #64748b);
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 服务状态徽章前缀 */
+.status-badge .badge-prefix {
+  font-size: 9px;
+  font-weight: 700;
+  opacity: 0.85;
+  margin-right: 3px;
+  letter-spacing: 0.3px;
+}
+
+/* 系统架构与版本提示 */
+.system-caption {
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.service-name-tag {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 2px 6px;
+  background: var(--surface-high);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  margin-left: 6px;
+  vertical-align: middle;
+}

@@ -37,6 +37,9 @@ func serviceUnitState(ctx context.Context, raw string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if !serviceExists(raw) {
+		return "not-found", nil
+	}
 	if manager == managerSystemd {
 		result, runErr := runProgram(ctx, "systemctl", "is-active", unit)
 		if runErr != nil {
