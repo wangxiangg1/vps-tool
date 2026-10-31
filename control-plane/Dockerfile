@@ -1,5 +1,7 @@
 # syntax=docker/dockerfile:1
-FROM golang:1.23-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:1.23-alpine AS build
+ARG TARGETOS
+ARG TARGETARCH
 RUN apk add --no-cache ca-certificates tzdata
 WORKDIR /src
 COPY control-plane/go.mod control-plane/go.sum ./control-plane/
@@ -7,7 +9,7 @@ RUN cd control-plane && go mod download
 COPY web ./web
 COPY control-plane ./control-plane
 RUN rm -rf control-plane/web/* && cp -a web/. control-plane/web/
-RUN cd control-plane && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags='-s -w -buildid=' -o /out/vps-server ./cmd/vps-server
+RUN cd control-plane && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags='-s -w -buildid=' -o /out/vps-server ./cmd/vps-server
 
 FROM alpine:3.20
 RUN addgroup -S app && adduser -S -G app app && mkdir -p /data && chown app:app /data
